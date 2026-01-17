@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Micracode Installer Script
-# Usage: curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/micracode/main/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/Jamessdevops/micracode/main/install.sh | bash
 
 set -e
 
-REPO_URL="https://github.com/YOUR_USERNAME/micracode.git"
+REPO_URL="https://github.com/Jamessdevops/micracode.git"
 INSTALL_DIR="$HOME/.micracode"
 
 echo "🚀 Installing Micracode..."
