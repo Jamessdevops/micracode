@@ -133,9 +133,3 @@ uv run micracode
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-## 🙏 Acknowledgments
-
-- [Textual](https://textual.textualize.io/) for the amazing TUI framework
-- [LangChain](https://langchain.com/) for LLM abstractions
-- [Astral](https://astral.sh/) for the uv package manager
