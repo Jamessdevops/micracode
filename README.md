@@ -39,7 +39,7 @@ uv run micracode
 ### One-line Install (via script)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/micracode/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/Jamessdevops/micracode/main/install.sh | bash
 ```
 
 ## 📖 Usage
@@ -133,3 +133,4 @@ uv run micracode
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
