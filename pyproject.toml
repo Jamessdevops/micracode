@@ -1,0 +1,23 @@
+[project]
+name = "micracode"
+version = "0.1.0"
+description = "A Gemini CLI-like terminal application"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "langchain-anthropic>=1.3.1",
+    "langchain-google-genai>=4.1.3",
+    "langchain-openai>=1.1.7",
+    "langgraph>=1.0.5",
+    "textual>=0.89.0",
+]
+
+[project.scripts]
+micracode = "main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["main.py", "agent", "component", "config", "llm", "tools"]
