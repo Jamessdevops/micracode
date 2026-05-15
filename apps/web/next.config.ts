@@ -18,9 +18,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  experimental: {
-    typedRoutes: true,
-  },
+  typedRoutes: true,
   transpilePackages: ["@micracode/shared", "@webcontainer/api"],
   async headers() {
     return [

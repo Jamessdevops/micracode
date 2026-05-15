@@ -21,6 +21,7 @@ env/
 .eggs/
 dist/
 build/
+uv.lock
 
 # Next.js
 .next/

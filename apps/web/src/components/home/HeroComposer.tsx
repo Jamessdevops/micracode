@@ -49,7 +49,7 @@ export function HeroComposer({ className }: { className?: string }) {
           color: "transparent",
         }}
       >
-        <span className="block">Let's Build</span>
+        <span className="block">Let&apos;s Build</span>
         <span className="block">Something Cool</span>
       </h1>
       <style jsx>{`

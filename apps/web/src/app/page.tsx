@@ -1,7 +1,4 @@
-import { FeatureChips } from "@/components/home/FeatureChips";
 import { HeroComposer } from "@/components/home/HeroComposer";
-import { HomeTopNav } from "@/components/home/HomeTopNav";
-import { PromoBanner } from "@/components/home/PromoBanner";
 import { RecentTasksSection } from "@/components/home/RecentTasksSection";
 import { ApiError, listProjects, type ProjectRecord } from "@/lib/api/projects";
 
