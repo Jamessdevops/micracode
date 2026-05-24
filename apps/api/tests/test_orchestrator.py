@@ -11,11 +11,6 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from micracode_api.config import get_settings
 from micracode_core.context import load_context
 from micracode_core.patcher import ProjectContext
-from micracode_core.schemas.codegen import (
-    PatchBundle,
-    PatchFile,
-    SearchReplace,
-)
 from micracode_core.schemas.project import PromptRecord
 from micracode_core.starter.next_default import NEXT_STARTER_FILES
 from micracode_core.storage import Storage
@@ -31,13 +26,30 @@ def _pr(role: str, content: str, *, idx: int = 0) -> PromptRecord:
     )
 
 
-def _make_mock_llm(plan_text: str, bundle: PatchBundle) -> MagicMock:
-    """Mock that returns ``plan_text`` on ainvoke and ``bundle`` via structured output."""
-    structured = MagicMock()
-    structured.ainvoke = AsyncMock(return_value=bundle)
+def _make_mock_llm(plan_text: str, write_patch_calls: list[dict]) -> MagicMock:
+    """Build a mock LLM for the tool-calling pipeline.
+
+    plan_text:        returned by the planner's ainvoke.
+    write_patch_calls: list of {path, content} dicts; each becomes a write_patch
+                       tool call in the first loop iteration.  If empty, the loop
+                       terminates immediately.
+    """
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content=plan_text))
-    mock_llm.with_structured_output.return_value = structured
+
+    bound = MagicMock()
+    mock_llm.bind_tools.return_value = bound
+
+    side_effects: list[AIMessage] = []
+    if write_patch_calls:
+        tool_calls = [
+            {"id": f"w{i}", "name": "write_patch", "args": wp, "type": "tool_call"}
+            for i, wp in enumerate(write_patch_calls)
+        ]
+        side_effects.append(AIMessage(content="", tool_calls=tool_calls))
+    side_effects.append(AIMessage(content="Done"))
+
+    bound.ainvoke = AsyncMock(side_effect=side_effects)
     return mock_llm
 
 
@@ -199,10 +211,7 @@ async def test_stream_threads_explicit_provider_and_model(
 
     storage.create_project("p-override")
 
-    bundle = PatchBundle(
-        files=[PatchFile(path="app/page.tsx", operation="create", content="// ok\n")]
-    )
-    mock_llm = _make_mock_llm("plan", bundle)
+    mock_llm = _make_mock_llm("plan", [{"path": "app/page.tsx", "content": "// ok\n"}])
 
     from micracode_core import orchestrator as orch
 
@@ -275,16 +284,10 @@ async def test_stream_end_to_end_create(monkeypatch: pytest.MonkeyPatch, storage
 
     storage.create_project("p-create")
 
-    bundle = PatchBundle(
-        files=[
-            PatchFile(
-                path="app/page.tsx",
-                operation="create",
-                content="export default function Page() { return null; }\n",
-            )
-        ]
+    mock_llm = _make_mock_llm(
+        "1) Create app/page.tsx.",
+        [{"path": "app/page.tsx", "content": "export default function Page() { return null; }\n"}],
     )
-    mock_llm = _make_mock_llm("1) Create app/page.tsx.", bundle)
 
     from micracode_core import orchestrator as orch
 
@@ -327,23 +330,17 @@ async def test_stream_end_to_end_edit_applies_patch(
     get_settings.cache_clear()
 
     storage.create_project("p-edit")
-    # Seed an existing file we'll edit. Overwrites whatever the starter wrote.
     storage.write_file(
         "p-edit",
         "app/page.tsx",
         'export default function Page() { return <div className="bg-black">hi</div>; }\n',
     )
 
-    bundle = PatchBundle(
-        files=[
-            PatchFile(
-                path="app/page.tsx",
-                operation="edit",
-                edits=[SearchReplace(search="bg-black", replace="bg-white")],
-            )
-        ]
+    patched_content = 'export default function Page() { return <div className="bg-white">hi</div>; }\n'
+    mock_llm = _make_mock_llm(
+        "1) Swap bg-black for bg-white.",
+        [{"path": "app/page.tsx", "content": patched_content}],
     )
-    mock_llm = _make_mock_llm("1) Swap bg-black for bg-white.", bundle)
 
     from micracode_core import orchestrator as orch
 
@@ -374,26 +371,23 @@ async def test_stream_end_to_end_edit_applies_patch(
 
 
 @pytest.mark.asyncio
-async def test_stream_patch_mismatch_is_recoverable(
+async def test_stream_write_patch_bad_path_does_not_abort_loop(
     monkeypatch: pytest.MonkeyPatch, storage: Storage
 ) -> None:
+    """write_patch with an unsafe path returns an error to the LLM; the loop continues."""
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     get_settings.cache_clear()
 
-    storage.create_project("p-mismatch")
-    storage.write_file("p-mismatch", "app/page.tsx", "hello world\n")
+    storage.create_project("p-badpath")
 
-    bundle = PatchBundle(
-        files=[
-            PatchFile(
-                path="app/page.tsx",
-                operation="edit",
-                edits=[SearchReplace(search="does-not-exist", replace="x")],
-            ),
-            PatchFile(path="app/extra.tsx", operation="create", content="export const x = 1;"),
-        ]
+    # Two write_patch calls in one round: first has an unsafe path, second is valid.
+    mock_llm = _make_mock_llm(
+        "write two files",
+        [
+            {"path": "../../etc/passwd", "content": "bad"},
+            {"path": "app/extra.tsx", "content": "export const x = 1;"},
+        ],
     )
-    mock_llm = _make_mock_llm("edit + add", bundle)
 
     from micracode_core import orchestrator as orch
 
@@ -403,19 +397,20 @@ async def test_stream_patch_mismatch_is_recoverable(
         events = [
             evt
             async for evt in orch.run_codegen_stream(
-                project_id="p-mismatch", prompt="x", storage=storage
+                project_id="p-badpath", prompt="x", storage=storage
             )
         ]
     finally:
         get_settings.cache_clear()
 
-    errors = [e for e in events if e.type == "error"]
     writes = [e for e in events if e.type == "file.write"]
-    # The mismatched edit becomes a recoverable error; the other op still runs.
-    assert any(e.recoverable for e in errors)
+    # The bad-path write_patch returned an error tool result; the second op still ran.
     assert any(w.path == "app/extra.tsx" for w in writes)
-    # Stream still completes with a done status.
+    # Stream completes with done (no abort).
     assert any(e.type == "status" and getattr(e, "stage", None) == "done" for e in events)
+    # No non-recoverable error event.
+    non_recoverable = [e for e in events if e.type == "error" and not e.recoverable]
+    assert not non_recoverable, f"unexpected non-recoverable errors: {non_recoverable}"
 
 
 # ---------------------------------------------------------------------------
@@ -432,10 +427,7 @@ async def test_stream_threads_history_to_planner_and_codegen(
 
     storage.create_project("p-hist")
 
-    bundle = PatchBundle(
-        files=[PatchFile(path="app/page.tsx", operation="create", content="// ok\n")]
-    )
-    mock_llm = _make_mock_llm("plan", bundle)
+    mock_llm = _make_mock_llm("plan", [{"path": "app/page.tsx", "content": "// ok\n"}])
 
     from micracode_core import orchestrator as orch
 
@@ -459,28 +451,22 @@ async def test_stream_threads_history_to_planner_and_codegen(
     finally:
         get_settings.cache_clear()
 
-    # Both LLM calls received the system prompt, then the history turns, then
-    # a HumanMessage with the current prompt.
+    # Planner received system prompt, then history turns, then current HumanMessage.
     planner_messages = mock_llm.ainvoke.await_args[0][0]
     assert isinstance(planner_messages[0], SystemMessage)
-    assert [type(m).__name__ for m in planner_messages[1:3]] == [
-        "HumanMessage",
-        "AIMessage",
-    ]
+    assert [type(m).__name__ for m in planner_messages[1:3]] == ["HumanMessage", "AIMessage"]
     assert planner_messages[1].content == "earlier turn"
     assert planner_messages[2].content == "earlier reply"
     assert isinstance(planner_messages[-1], HumanMessage)
     assert "now do this" in planner_messages[-1].content
 
-    codegen_structured = mock_llm.with_structured_output.return_value
-    codegen_messages = codegen_structured.ainvoke.await_args[0][0]
+    # Tool loop first call also received the same history in the initial messages.
+    bound_mock = mock_llm.bind_tools.return_value
+    codegen_messages = bound_mock.ainvoke.call_args_list[0][0][0]
     assert isinstance(codegen_messages[0], SystemMessage)
-    assert [type(m).__name__ for m in codegen_messages[1:3]] == [
-        "HumanMessage",
-        "AIMessage",
-    ]
+    assert [type(m).__name__ for m in codegen_messages[1:3]] == ["HumanMessage", "AIMessage"]
 
-    # Confirm the stream actually produced a file write too.
+    # Confirm the stream produced a file write.
     assert any(e.type == "file.write" for e in events)
 
 
@@ -549,10 +535,7 @@ async def test_plan_mode_terminal_event_is_plan_ready(
 
     storage.create_project("p-plan-mode")
 
-    bundle = PatchBundle(
-        files=[PatchFile(path="app/page.tsx", operation="create", content="// ok\n")]
-    )
-    mock_llm = _make_mock_llm("1) Create page.", bundle)
+    mock_llm = _make_mock_llm("1) Create page.", [{"path": "app/page.tsx", "content": "// ok\n"}])
 
     from micracode_core import orchestrator as orch
 
@@ -585,10 +568,7 @@ async def test_plan_mode_emits_no_file_events(
 
     storage.create_project("p-plan-no-files")
 
-    bundle = PatchBundle(
-        files=[PatchFile(path="app/page.tsx", operation="create", content="// ok\n")]
-    )
-    mock_llm = _make_mock_llm("plan text", bundle)
+    mock_llm = _make_mock_llm("plan text", [{"path": "app/page.tsx", "content": "// ok\n"}])
 
     from micracode_core import orchestrator as orch
 
@@ -620,10 +600,7 @@ async def test_plan_mode_emits_plan_text_before_plan_ready(
 
     storage.create_project("p-plan-text")
 
-    bundle = PatchBundle(
-        files=[PatchFile(path="app/page.tsx", operation="create", content="// ok\n")]
-    )
-    mock_llm = _make_mock_llm("Here is the plan.", bundle)
+    mock_llm = _make_mock_llm("Here is the plan.", [{"path": "app/page.tsx", "content": "// ok\n"}])
 
     from micracode_core import orchestrator as orch
 
@@ -663,10 +640,7 @@ async def test_build_mode_is_default_and_emits_done(
 
     storage.create_project("p-build-default")
 
-    bundle = PatchBundle(
-        files=[PatchFile(path="app/page.tsx", operation="create", content="// ok\n")]
-    )
-    mock_llm = _make_mock_llm("plan", bundle)
+    mock_llm = _make_mock_llm("plan", [{"path": "app/page.tsx", "content": "// ok\n"}])
 
     from micracode_core import orchestrator as orch
 
@@ -706,10 +680,7 @@ async def test_plan_uses_human_message_for_openai_reasoning_family(
 
     storage.create_project("p-reasoning")
 
-    bundle = PatchBundle(
-        files=[PatchFile(path="app/page.tsx", operation="create", content="// ok\n")]
-    )
-    mock_llm = _make_mock_llm("plan text", bundle)
+    mock_llm = _make_mock_llm("plan text", [{"path": "app/page.tsx", "content": "// ok\n"}])
 
     from micracode_core import orchestrator as orch
 
@@ -750,10 +721,7 @@ async def test_plan_uses_system_message_for_non_reasoning_family(
 
     storage.create_project("p-non-reasoning")
 
-    bundle = PatchBundle(
-        files=[PatchFile(path="app/page.tsx", operation="create", content="// ok\n")]
-    )
-    mock_llm = _make_mock_llm("plan text", bundle)
+    mock_llm = _make_mock_llm("plan text", [{"path": "app/page.tsx", "content": "// ok\n"}])
 
     from micracode_core import orchestrator as orch
 

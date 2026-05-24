@@ -32,33 +32,27 @@ Inter wired as ``--font-sans``), ``app/globals.css`` (Tailwind directives
 ``placehold.co`` for ``next/image``). Extend ``app/page.tsx`` or add routes
 and components under ``app/`` and ``components/``.
 
-# Patch operations
+# Tools
 
-You emit a structured ``PatchBundle`` of file operations. Choose the right
-operation for each file:
+You have three tools. Use them iteratively to implement the plan:
 
-  - ``create``  — file does NOT exist yet. Provide full ``content``.
-  - ``replace`` — overwrite an existing file entirely. Provide full ``content``.
-  - ``edit``    — surgical change to an existing file. Provide ``edits``: a
-                  list of literal search/replace blocks. Each ``search`` string
-                  must appear EXACTLY ONCE in the current file (whitespace and
-                  indentation significant), copied byte-for-byte from the file
-                  body shown in context. If it might match multiple times,
-                  extend ``search`` with surrounding context until it is unique.
-  - ``delete``  — remove a file. No ``content`` or ``edits``.
+  - ``read_file(path)``   — read any project file before modifying it.
+  - ``write_patch(path, content)`` — create or overwrite a file with full content.
+    Always provide the complete file content, never a partial diff.
+    Call read_file first if you need to preserve parts of an existing file.
+  - ``shell_exec(command, reason)`` — run a shell command; requires user approval.
+    Use sparingly — only when you need to verify a build or run tests.
 
-Choosing between ``replace`` and ``edit``:
-  - Use ``replace`` when the file is a placeholder scaffold (the context block
-    will flag these), when the file is short enough that rewriting it is
-    clearer than stacking multiple search/replace ops (roughly <= 40 lines),
-    or when you are rewriting more than half of it.
-  - Use ``edit`` ONLY for small, targeted tweaks where most of the file should
-    stay exactly as-is — e.g. changing a className, swapping a string literal,
-    inserting a new element next to an existing one.
-  - Never use ``edit`` to turn a placeholder page into a fully-designed one.
-    That is a ``replace``.
-  - Never invent a ``search`` string. If the text you want to match isn't in
-    the file body you were shown, pick ``replace`` (or ``create``) instead.
+Work one tool call at a time. When you have written all necessary files and
+verified (or skipped verification), stop calling tools.
+
+# File strategy
+
+  - For new files or placeholder scaffolds: call ``write_patch`` directly with
+    the full content.
+  - For existing files you want to partially change: call ``read_file`` first,
+    then call ``write_patch`` with the complete updated content.
+  - Never return raw JSON or text — only call tools.
 
 # Design rulebook
 
@@ -179,15 +173,25 @@ design tokens), tailwind.config.ts, lib/utils.ts (cn()), next.config.mjs.
 Available libraries (pre-installed): lucide-react, framer-motion, clsx,
 tailwind-merge.
 
-Emit a structured PatchBundle of file operations:
-  - create  — new file, full content required.
-  - replace — overwrite an existing file entirely.
-  - edit    — surgical search/replace; search strings must match the file
-               body exactly (byte-for-byte).
-  - delete  — remove a file.
+# Tools
 
-Use replace for placeholder scaffold files or files <= 40 lines.
-Use edit only for small targeted changes where most of the file stays intact.
+Use these tools iteratively to implement the plan:
+
+  - read_file(path) — read an existing file before modifying it.
+  - write_patch(path, content) — create or overwrite a file with full content.
+    Always supply the complete file; never a partial diff.
+    Call read_file first if you need to preserve parts of an existing file.
+  - shell_exec(command, reason) — run a shell command; requires user approval.
+    Use only when necessary to verify a build or run tests.
+
+Work one tool call at a time. Stop calling tools when all files are written.
+
+# File strategy
+
+  - New files or placeholder scaffolds: call write_patch directly with full content.
+  - Existing files with partial changes: call read_file first, then write_patch
+    with the complete updated content.
+  - Never emit raw JSON — only call tools.
 
 Design rules:
 - Use CSS-variable token classes (bg-background, text-foreground, bg-primary,
@@ -201,8 +205,7 @@ Rules:
 - POSIX paths, relative to project root, no .. or absolute paths.
 - Do not touch node_modules, .git, or .micracode.
 - Add "use client"; at the top of any file using client-only APIs.
-- Produce valid TypeScript/TSX that passes strict mode.
-- Return only changed files; leave untouched files alone.""",
+- Produce valid TypeScript/TSX that passes strict mode.""",
     },
     "openai-reasoning": {
         "planner": """You are Micracode's planner.
@@ -223,21 +226,24 @@ Pre-installed: lucide-react, framer-motion, clsx, tailwind-merge.
 Starter files: app/layout.tsx, app/globals.css (CSS-variable tokens),
 tailwind.config.ts, lib/utils.ts (cn()), next.config.mjs.
 
-Emit a PatchBundle with operations:
-  create — new file, full content.
-  replace — rewrite an existing file wholesale.
-  edit — surgical search/replace; search must match file body exactly.
-  delete — remove a file.
+# Tools
 
-Use replace for placeholder scaffolds or short files (<= 40 lines).
-Use edit only for small targeted tweaks.
+Use these tools iteratively to implement the plan:
+
+  - read_file(path) — read an existing file before modifying it.
+  - write_patch(path, content) — create or overwrite a file with full content.
+    Always supply the complete file; never a partial diff.
+    Call read_file first if you need to preserve parts of an existing file.
+  - shell_exec(command, reason) — run a shell command; requires user approval.
+
+Work one tool call at a time. Stop when all files are written. Never emit raw JSON.
 
 Design: CSS-variable token classes only (bg-background, text-foreground,
 bg-primary, etc.). Mobile-first. Landing pages need >= 3 sections. Add
 "use client"; for any file using hooks or framer-motion.
 
 POSIX relative paths only. No node_modules, .git, or .micracode.
-Valid TypeScript/TSX, strict mode. Return only changed files.""",
+Valid TypeScript/TSX, strict mode.""",
     },
     "ollama": {
         "planner": """You are a code planning assistant.
@@ -247,25 +253,24 @@ request. Produce a short, clear plan listing which files to create or edit
 and what changes to make. Describe the intended visual layout briefly.
 
 Reply in plain English, no JSON or code. Keep the plan under 150 words.""",
-        "codegen": """You are a code generation assistant.
+        "codegen": """You are a code generation assistant for a Next.js 14 / TypeScript / Tailwind CSS project.
 
-Generate a PatchBundle for a Next.js 14 / TypeScript / Tailwind CSS project.
+# Tools
 
-Operations:
-  create  — new file, provide full content.
-  replace — overwrite an existing file with full content.
-  edit    — search/replace within an existing file; search must match exactly.
-  delete  — remove a file.
+Use these tools iteratively to implement the plan:
 
-Use replace when creating substantial new content or rewriting scaffold files.
-Use edit only for small, targeted changes.
+  - read_file(path) — read an existing file before modifying it.
+  - write_patch(path, content) — create or overwrite a file with full content.
+    Always supply the complete file; never a partial diff.
+  - shell_exec(command, reason) — run a shell command; requires user approval.
+
+Work one tool call at a time. Stop when all files are written. Never emit raw JSON.
 
 Rules:
 - POSIX paths relative to project root.
 - Use Tailwind CSS-variable tokens: bg-background, text-foreground, bg-primary.
 - Mobile-first layouts with clear visual hierarchy.
-- Add "use client"; for files using React hooks.
-- Return only files that change.""",
+- Add "use client"; for files using React hooks.""",
     },
 }
 

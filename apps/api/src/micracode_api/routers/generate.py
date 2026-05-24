@@ -10,8 +10,9 @@ from collections.abc import AsyncIterator
 import orjson
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-from micracode_core.orchestrator import run_codegen_stream
+from micracode_core.orchestrator import _approval_registry, run_codegen_stream
 from micracode_core.schemas.stream import GenerateRequest
 from micracode_core.storage import SLUG_RE, Storage
 
@@ -33,11 +34,16 @@ def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:16]}"
 
 
+class _ApproveRequest(BaseModel):
+    approved: bool
+
+
 async def _ui_message_stream(
     request: Request,
     payload: GenerateRequest,
     storage: Storage,
     engine: "MicracodeEngine",  # type: ignore[name-defined]
+    request_id: str,
 ) -> AsyncIterator[bytes]:
     slug = payload.project_id
     assistant_buffer: list[str] = []
@@ -73,6 +79,7 @@ async def _ui_message_stream(
             provider=payload.provider,
             model=payload.model,
             mode=payload.mode,
+            request_id=request_id,
         ):
             if await request.is_disconnected():
                 logger.info("client disconnected — aborting stream")
@@ -124,6 +131,49 @@ async def _ui_message_stream(
                         "data": {"command": event.command, "cwd": event.cwd},
                     }
                 )
+            elif event.type == "tool.call":
+                yield _frame(
+                    {
+                        "type": "data-tool-call",
+                        "data": {
+                            "tool_call_id": event.tool_call_id,
+                            "tool_name": event.tool_name,
+                            "args": event.args,
+                            "reason": event.reason,
+                        },
+                    }
+                )
+            elif event.type == "tool.permission_request":
+                yield _frame(
+                    {
+                        "type": "data-tool-permission-request",
+                        "data": {
+                            "tool_call_id": event.tool_call_id,
+                            "command": event.command,
+                            "reason": event.reason,
+                            "request_id": request_id,
+                        },
+                    }
+                )
+            elif event.type == "tool.result":
+                yield _frame(
+                    {
+                        "type": "data-tool-result",
+                        "data": {
+                            "tool_call_id": event.tool_call_id,
+                            "tool_name": event.tool_name,
+                            "output": event.output,
+                            "approved": event.approved,
+                        },
+                    }
+                )
+            elif event.type == "tool.denied":
+                yield _frame(
+                    {
+                        "type": "data-tool-denied",
+                        "data": {"tool_call_id": event.tool_call_id},
+                    }
+                )
             elif event.type == "error":
                 yield _frame({"type": "error", "errorText": event.message})
     except asyncio.CancelledError:
@@ -163,18 +213,44 @@ async def generate(
     if storage.get_project(payload.project_id) is None:
         raise HTTPException(status_code=404, detail="project not found")
 
+    request_id = uuid.uuid4().hex
+
     logger.info(
-        "generate stream start project=%s prompt_len=%d",
+        "generate stream start project=%s prompt_len=%d request_id=%s",
         payload.project_id,
         len(payload.prompt),
+        request_id,
     )
     return StreamingResponse(
-        _ui_message_stream(request, payload, storage, engine),
+        _ui_message_stream(request, payload, storage, engine, request_id=request_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "x-vercel-ai-ui-message-stream": "v1",
+            "X-Request-ID": request_id,
         },
     )
+
+
+@router.post("/generate/{request_id}/tool/{tool_call_id}/approve")
+async def approve_tool(
+    request_id: str,
+    tool_call_id: str,
+    body: _ApproveRequest,
+) -> dict:
+    """Approve or deny a pending shell_exec tool call."""
+    request_approvals = _approval_registry.get(request_id)
+    if request_approvals is None:
+        raise HTTPException(status_code=404, detail="request not found or already completed")
+
+    approval_data = request_approvals.get(tool_call_id)
+    if approval_data is None:
+        raise HTTPException(status_code=404, detail="tool call not found or already resolved")
+
+    event, result_holder = approval_data
+    result_holder.append(body.approved)
+    event.set()
+
+    return {"ok": True}

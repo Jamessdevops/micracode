@@ -39,7 +39,7 @@ class ShellExecEvent(_Event):
 
 class StatusEvent(_Event):
     type: Literal["status"] = "status"
-    stage: Literal["planning", "generating", "done", "cancelled", "plan_ready"]
+    stage: Literal["planning", "generating", "done", "cancelled", "plan_ready", "max_iterations_reached"]
     note: str | None = None
     snapshot_id: str | None = None
 
@@ -50,13 +50,45 @@ class ErrorEvent(_Event):
     recoverable: bool = False
 
 
+class ToolCallEvent(_Event):
+    type: Literal["tool.call"] = "tool.call"
+    tool_call_id: str
+    tool_name: str
+    args: dict
+    reason: str = ""
+
+
+class ToolPermissionRequestEvent(_Event):
+    type: Literal["tool.permission_request"] = "tool.permission_request"
+    tool_call_id: str
+    command: str
+    reason: str
+
+
+class ToolResultEvent(_Event):
+    type: Literal["tool.result"] = "tool.result"
+    tool_call_id: str
+    tool_name: str
+    output: str
+    approved: bool = True
+
+
+class ToolDeniedEvent(_Event):
+    type: Literal["tool.denied"] = "tool.denied"
+    tool_call_id: str
+
+
 StreamEvent = Annotated[
     MessageDeltaEvent
     | FileWriteEvent
     | FileDeleteEvent
     | ShellExecEvent
     | StatusEvent
-    | ErrorEvent,
+    | ErrorEvent
+    | ToolCallEvent
+    | ToolPermissionRequestEvent
+    | ToolResultEvent
+    | ToolDeniedEvent,
     Field(discriminator="type"),
 ]
 

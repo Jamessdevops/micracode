@@ -57,5 +57,9 @@ class CoreConfig(BaseSettings):
             return ""
         return self.google_api_key
 
+    # --- Tool-calling loop ----------------------------------------------------
+    max_tool_iterations: int = Field(default=20)
+    shell_exec_output_limit: int = Field(default=8192)
+
     # --- Storage --------------------------------------------------------------
     opener_apps_dir: Path = Field(default_factory=_default_data_dir)

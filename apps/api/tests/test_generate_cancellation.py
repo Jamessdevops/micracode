@@ -85,7 +85,7 @@ async def test_normal_turn_persists_user_and_assistant_with_snapshot_id(
     req = _FakeRequest(disconnect_after=None)
     payload = GenerateRequest(project_id=rec.id, prompt="make it simple", retry=False)
     frames = await _consume(
-        generate_router._ui_message_stream(req, payload, storage, MagicMock())  # type: ignore[arg-type]
+        generate_router._ui_message_stream(req, payload, storage, MagicMock(), request_id="test-req-id")  # type: ignore[arg-type]
     )
 
     assert any(b"Plan: tweak page" in f for f in frames)
@@ -123,7 +123,7 @@ async def test_retry_flag_skips_user_prompt_append(
         project_id=rec.id, prompt="original prompt", retry=True
     )
     await _consume(
-        generate_router._ui_message_stream(req, payload, storage, MagicMock())  # type: ignore[arg-type]
+        generate_router._ui_message_stream(req, payload, storage, MagicMock(), request_id="test-req-id")  # type: ignore[arg-type]
     )
 
     prompts = storage.read_prompts(rec.id)
@@ -150,7 +150,7 @@ async def test_empty_reply_not_persisted(
     req = _FakeRequest()
     payload = GenerateRequest(project_id=rec.id, prompt="hi", retry=False)
     await _consume(
-        generate_router._ui_message_stream(req, payload, storage, MagicMock())  # type: ignore[arg-type]
+        generate_router._ui_message_stream(req, payload, storage, MagicMock(), request_id="test-req-id")  # type: ignore[arg-type]
     )
 
     prompts = storage.read_prompts(rec.id)
@@ -180,7 +180,7 @@ async def test_disconnect_annotates_partial_reply(
     req = _FakeRequest(disconnect_after=2)
     payload = GenerateRequest(project_id=rec.id, prompt="do it", retry=False)
     await _consume(
-        generate_router._ui_message_stream(req, payload, storage, MagicMock())  # type: ignore[arg-type]
+        generate_router._ui_message_stream(req, payload, storage, MagicMock(), request_id="test-req-id")  # type: ignore[arg-type]
     )
 
     prompts = storage.read_prompts(rec.id)

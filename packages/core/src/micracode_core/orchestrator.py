@@ -1,39 +1,43 @@
 """Plain-Python orchestrator for the codegen loop (no LangGraph).
 
-One async generator, two LLM calls (plan, codegen), one patch-apply pass.
+One async generator, two LLM calls (plan, codegen tool loop).
 State flows as function arguments; events are ``yield``-ed to the caller.
-File writes and deletes are persisted to storage here, before the matching
-event is yielded, so storage and the client tree stay in sync.
+File writes are persisted to storage before the matching event is yielded,
+so storage and the client tree stay in sync.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import AsyncIterator
 
 import httpx
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from .config import CoreConfig
-from .schemas.codegen import PatchBundle
 from .schemas.project import PromptRecord
 from .schemas.stream import (
     ErrorEvent,
-    FileDeleteEvent,
     FileWriteEvent,
     MessageDeltaEvent,
     StatusEvent,
     StreamEvent,
+    ToolCallEvent,
+    ToolDeniedEvent,
+    ToolPermissionRequestEvent,
+    ToolResultEvent,
 )
 from .storage import Storage
 from . import model_catalog
 from .context import load_context
 from .llm import LLMFactory
-from .patcher import ProjectContext, apply_bundle
+from .patcher import ProjectContext
 from .prompts import get_prompt
+from .tools import ALL_TOOLS, execute_read_file, execute_shell_exec, execute_write_patch
 
 logger = logging.getLogger(__name__)
 
@@ -182,10 +186,11 @@ def _build_codegen_messages(
         f"{_render_context_block(context)}\n\n"
         f"User request:\n{prompt or '(empty)'}\n\n"
         f"Plan:\n{plan or '(none)'}\n\n"
-        "Respond with the PatchBundle schema only. Use 'create' for new "
-        "files, 'replace' to rewrite placeholder scaffolds or short files "
-        "wholesale, and 'edit' only for surgical tweaks whose search "
-        "strings appear verbatim in the file bodies above."
+        "Use the available tools to implement the plan. Call read_file to "
+        "inspect existing files before modifying them, write_patch to create "
+        "or overwrite files, and shell_exec (only if needed) to run build or "
+        "test commands. Proceed tool call by tool call until the task is "
+        "complete, then stop calling tools."
     )
     if family == "openai-reasoning":
         return [
@@ -199,7 +204,36 @@ def _build_codegen_messages(
     ]
 
 
-async def _codegen(
+# ---------------------------------------------------------------------------
+# Approval registry and gate (seam monkeypatched in tests)
+# ---------------------------------------------------------------------------
+
+# Maps request_id -> {tool_call_id: (asyncio.Event, result_holder)}
+_approval_registry: dict[str, dict[str, tuple[asyncio.Event, list[bool]]]] = {}
+
+
+async def _check_approval(request_id: str, tool_call_id: str) -> bool:
+    """Wait for user approval of a pending shell_exec; return the decision.
+
+    Monkeypatched in tests to return True/False immediately.
+    """
+    pending = _approval_registry.get(request_id, {}).get(tool_call_id)
+    if pending is None:
+        return False
+    event, result_holder = pending
+    try:
+        await asyncio.wait_for(event.wait(), timeout=300.0)
+        return result_holder[0] if result_holder else False
+    except asyncio.TimeoutError:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Tool-calling codegen loop
+# ---------------------------------------------------------------------------
+
+
+async def _codegen_tool_loop(
     prompt: str,
     plan: str,
     history: list[BaseMessage],
@@ -209,24 +243,127 @@ async def _codegen(
     model: str,
     family: str,
     config: CoreConfig,
-) -> PatchBundle:
+    storage: Storage,
+    project_id: str,
+    request_id: str,
+) -> AsyncIterator[StreamEvent]:
     try:
         llm = build_llm(provider, model, config, family=family)
-        structured = llm.with_structured_output(PatchBundle)
-        result = await structured.ainvoke(
-            _build_codegen_messages(prompt, plan, history, context, family)
-        )
-    except asyncio.CancelledError:
-        raise
     except Exception as exc:
-        logger.exception("codegen LLM call failed")
-        raise CodegenError(f"codegen failed: {exc}") from exc
+        raise CodegenError(f"codegen llm init failed: {exc}") from exc
 
-    if not isinstance(result, PatchBundle):
-        raise CodegenError("codegen returned unexpected shape")
-    if not result.files:
-        raise CodegenError("codegen returned no file operations")
-    return result
+    bound_llm = llm.bind_tools(ALL_TOOLS)
+    messages: list[BaseMessage] = _build_codegen_messages(prompt, plan, history, context, family)
+    project_root = storage.project_dir(project_id)
+
+    _approval_registry[request_id] = {}
+
+    try:
+        for iteration in range(config.max_tool_iterations + 1):
+            try:
+                response = await bound_llm.ainvoke(messages)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception("codegen tool loop LLM call failed")
+                raise CodegenError(f"codegen failed: {exc}") from exc
+
+            tool_calls = getattr(response, "tool_calls", None) or []
+
+            if not tool_calls:
+                return
+
+            if iteration >= config.max_tool_iterations:
+                yield StatusEvent(stage="max_iterations_reached")
+                return
+
+            messages.append(response)
+
+            for tc in tool_calls:
+                tool_call_id: str = tc["id"]
+                tool_name: str = tc["name"]
+                args: dict = tc.get("args") or {}
+                reason: str = args.get("reason", "")
+
+                yield ToolCallEvent(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    args=args,
+                    reason=reason,
+                )
+
+                if tool_name == "shell_exec":
+                    command: str = args.get("command", "")
+                    yield ToolPermissionRequestEvent(
+                        tool_call_id=tool_call_id,
+                        command=command,
+                        reason=reason,
+                    )
+
+                    approval_event: asyncio.Event = asyncio.Event()
+                    result_holder: list[bool] = []
+                    _approval_registry[request_id][tool_call_id] = (approval_event, result_holder)
+
+                    approved = await _check_approval(request_id, tool_call_id)
+
+                    if not approved:
+                        yield ToolDeniedEvent(tool_call_id=tool_call_id)
+                        tool_result = '{"error": "user denied this command"}'
+                    else:
+                        output = await asyncio.to_thread(
+                            execute_shell_exec,
+                            command,
+                            project_root,
+                            config.shell_exec_output_limit,
+                        )
+                        yield ToolResultEvent(
+                            tool_call_id=tool_call_id,
+                            tool_name=tool_name,
+                            output=output,
+                            approved=True,
+                        )
+                        tool_result = output
+
+                elif tool_name == "read_file":
+                    output = execute_read_file(args.get("path", ""), project_root)
+                    yield ToolResultEvent(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        output=output,
+                        approved=True,
+                    )
+                    tool_result = output
+
+                elif tool_name == "write_patch":
+                    result_msg, file_event = execute_write_patch(
+                        args.get("path", ""),
+                        args.get("content", ""),
+                        project_root,
+                        storage,
+                        project_id,
+                    )
+                    if file_event is not None:
+                        yield file_event
+                    yield ToolResultEvent(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        output=result_msg,
+                        approved=True,
+                    )
+                    tool_result = result_msg
+
+                else:
+                    tool_result = f"error: unknown tool {tool_name!r}"
+                    yield ToolResultEvent(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        output=tool_result,
+                        approved=True,
+                    )
+
+                messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
+    finally:
+        _approval_registry.pop(request_id, None)
 
 
 async def run_codegen_stream(
@@ -240,8 +377,10 @@ async def run_codegen_stream(
     model: str | None = None,
     family: str | None = None,
     mode: str = "build",
+    request_id: str | None = None,
 ) -> AsyncIterator[StreamEvent]:
     current = config or CoreConfig()
+    resolved_request_id = request_id or uuid.uuid4().hex
 
     yield StatusEvent(stage="planning", note="Reading project")
 
@@ -314,28 +453,6 @@ async def run_codegen_stream(
         yield StatusEvent(stage="plan_ready")
         return
 
-    try:
-        bundle = await _codegen(
-            prompt,
-            plan_text,
-            history_msgs,
-            context,
-            provider=resolved_provider,
-            model=resolved_model,
-            family=resolved_family,
-            config=current,
-        )
-    except CodegenError as exc:
-        logger.warning("codegen failed: %s", exc)
-        yield ErrorEvent(message=str(exc), recoverable=False)
-        return
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:
-        logger.exception("codegen crashed")
-        yield ErrorEvent(message=f"codegen crashed: {exc}", recoverable=False)
-        return
-
     snapshot_id: str | None = None
     try:
         record = store.create_snapshot(project_id, user_prompt=prompt)
@@ -345,35 +462,34 @@ async def run_codegen_stream(
 
     yield StatusEvent(stage="generating", note="Writing files", snapshot_id=snapshot_id)
 
-    for result in apply_bundle(bundle, context):
-        if result.kind == "error":
-            yield ErrorEvent(
-                message=f"{result.path}: {result.error}",
-                recoverable=True,
-            )
-        elif result.kind == "delete":
-            try:
-                store.delete_file(project_id, result.path)
-            except ValueError as exc:
-                yield ErrorEvent(
-                    message=f"rejected file.delete {result.path}: {exc}",
-                    recoverable=True,
-                )
-                continue
-            except OSError:
-                logger.exception("file.delete failed path=%s", result.path)
-            yield FileDeleteEvent(path=result.path)
-        else:
-            try:
-                store.write_file(project_id, result.path, result.content)
-            except ValueError as exc:
-                yield ErrorEvent(
-                    message=f"rejected file.write {result.path}: {exc}",
-                    recoverable=True,
-                )
-                continue
-            except OSError:
-                logger.exception("file.write failed path=%s", result.path)
-            yield FileWriteEvent(path=result.path, content=result.content)
+    hit_cap = False
+    try:
+        async for event in _codegen_tool_loop(
+            prompt,
+            plan_text,
+            history_msgs,
+            context,
+            provider=resolved_provider,
+            model=resolved_model,
+            family=resolved_family,
+            config=current,
+            storage=store,
+            project_id=project_id,
+            request_id=resolved_request_id,
+        ):
+            yield event
+            if event.type == "status" and getattr(event, "stage", None) == "max_iterations_reached":
+                hit_cap = True
+    except CodegenError as exc:
+        logger.warning("codegen tool loop failed: %s", exc)
+        yield ErrorEvent(message=str(exc), recoverable=False)
+        return
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.exception("codegen tool loop crashed")
+        yield ErrorEvent(message=f"codegen crashed: {exc}", recoverable=False)
+        return
 
-    yield StatusEvent(stage="done")
+    if not hit_cap:
+        yield StatusEvent(stage="done")
