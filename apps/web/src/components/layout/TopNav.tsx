@@ -1,10 +1,11 @@
 "use client";
 
-import { Code2, Download } from "lucide-react";
+import { Code2, Download, PanelRight, PanelRightClose } from "lucide-react";
 import Link from "next/link";
 
 import { getProjectDownloadUrl } from "@/lib/api/projects";
 import { cn } from "@/lib/utils";
+import { useUiStore } from "@/store/uiStore";
 
 export interface TopNavProps {
   projectId: string;
@@ -14,6 +15,9 @@ export interface TopNavProps {
 
 
 export function TopNav({ projectId, onPublish }: TopNavProps) {
+  const isPanelOpen = useUiStore((s) => s.isPanelOpen);
+  const togglePanel = useUiStore((s) => s.togglePanel);
+
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-zinc-800 bg-black px-3 text-sm text-zinc-50">
       <div className="flex items-center gap-2">
@@ -37,6 +41,18 @@ export function TopNav({ projectId, onPublish }: TopNavProps) {
           <Download className="size-4" />
           Download
         </a>
+        <button
+          onClick={togglePanel}
+          aria-label={isPanelOpen ? "Close preview panel" : "Open preview panel"}
+          title={isPanelOpen ? "Close preview panel" : "Open preview panel"}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-50"
+        >
+          {isPanelOpen ? (
+            <PanelRightClose className="size-4" />
+          ) : (
+            <PanelRight className="size-4" />
+          )}
+        </button>
         {/* <Avatar className="ml-1 size-7" /> */}
       </div>
     </header>

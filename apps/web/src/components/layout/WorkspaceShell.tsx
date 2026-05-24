@@ -2,6 +2,7 @@
 
 import type { FileSystemTree } from "@micracode/shared";
 import { useEffect, useMemo, useRef } from "react";
+import type { ImperativePanelHandle } from "react-resizable-panels";
 
 import { V0ChatPanel } from "@/components/chat/V0ChatPanel";
 import { V0WorkspacePanel } from "@/components/editor/V0WorkspacePanel";
@@ -15,6 +16,7 @@ import { type PromptRecord } from "@/lib/api/projects";
 import { promptsToUIMessages } from "@/lib/api/uiMessage";
 import { useHydrateFileSystem } from "@/store/fileSystemStore";
 import { useModelStore } from "@/store/modelStore";
+import { useUiStore } from "@/store/uiStore";
 import { useWebContainerStore } from "@/store/webContainerStore";
 
 export interface WorkspaceShellProps {
@@ -55,6 +57,28 @@ export function WorkspaceShell({
   // projects, tear down the previous sandbox first so we don't leak it.
   const startPreview = useWebContainerStore((s) => s.startPreview);
   const stopPreview = useWebContainerStore((s) => s.stopPreview);
+  const isPanelOpen = useUiStore((s) => s.isPanelOpen);
+  const setIsPanelOpen = useUiStore((s) => s.setIsPanelOpen);
+  const workspacePanelRef = useRef<ImperativePanelHandle>(null);
+
+  // Sync store → panel imperatively
+  useEffect(() => {
+    const panel = workspacePanelRef.current;
+    if (!panel) return;
+    if (isPanelOpen && panel.isCollapsed()) {
+      panel.expand();
+    } else if (!isPanelOpen && !panel.isCollapsed()) {
+      panel.collapse();
+    }
+  }, [isPanelOpen]);
+
+  // On mount, sync actual panel state (restored by autoSaveId) → store
+  useEffect(() => {
+    const panel = workspacePanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) setIsPanelOpen(false);
+  }, [setIsPanelOpen]);
+
   const lastProjectId = useRef<string | null>(null);
   useEffect(() => {
     if (lastProjectId.current && lastProjectId.current !== projectId) {
@@ -81,10 +105,10 @@ export function WorkspaceShell({
       <div className="min-h-0 flex-1">
         <ResizablePanelGroup
           direction="horizontal"
-          autoSaveId="micracode:workspace-v2"
+          autoSaveId="micracode:workspace-v3"
           className="h-full"
         >
-          <ResizablePanel defaultSize={35} minSize={25} maxSize={55}>
+          <ResizablePanel defaultSize={35} minSize={25}>
             <V0ChatPanel
               projectId={projectId}
               initialMessages={initialMessages}
@@ -93,9 +117,20 @@ export function WorkspaceShell({
             />
           </ResizablePanel>
 
-          <ResizableHandle className="bg-transparent after:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0" />
+          <ResizableHandle
+            className={`bg-transparent after:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 ${!isPanelOpen ? "hidden" : ""}`}
+          />
 
-          <ResizablePanel defaultSize={65} minSize={45} className="border border-[oklch(30.1%_0_0)] rounded-[25px] bg-[#0E0E11]">
+          <ResizablePanel
+            ref={workspacePanelRef}
+            defaultSize={65}
+            minSize={45}
+            collapsible
+            collapsedSize={0}
+            onCollapse={() => setIsPanelOpen(false)}
+            onExpand={() => setIsPanelOpen(true)}
+            className="border border-[oklch(30.1%_0_0)] rounded-[25px] bg-[#0E0E11]"
+          >
             <V0WorkspacePanel
               projectId={projectId}
               projectName={projectName}
