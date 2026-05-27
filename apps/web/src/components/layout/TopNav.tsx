@@ -1,9 +1,10 @@
 "use client";
 
-import { Code2, Download, PanelRight, PanelRightClose } from "lucide-react";
+import { Code2, Download, PanelRight, PanelRightClose, Settings } from "lucide-react";
 import Link from "next/link";
 
 import { getProjectDownloadUrl } from "@/lib/api/projects";
+import { isDesktop } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/store/uiStore";
 
@@ -41,6 +42,16 @@ export function TopNav({ projectId, onPublish }: TopNavProps) {
           <Download className="size-4" />
           Download
         </a>
+        {isDesktop() && (
+          <a
+            href="/settings"
+            aria-label="Settings"
+            title="Settings"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-50"
+          >
+            <Settings className="size-4" />
+          </a>
+        )}
         <button
           onClick={togglePanel}
           aria-label={isPanelOpen ? "Close preview panel" : "Open preview panel"}

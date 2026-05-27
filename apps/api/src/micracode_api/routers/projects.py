@@ -7,6 +7,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path, Response, status
 
+from pydantic import BaseModel
+
 from micracode_core.schemas.project import (
     CreateProjectRequest,
     ProjectRecord,
@@ -15,6 +17,11 @@ from micracode_core.schemas.project import (
     UpdateProjectFileRequest,
 )
 from micracode_core.storage import SLUG_RE, SNAPSHOT_ID_RE, iter_ignored_top_level
+
+
+class ProjectWithRootPath(ProjectRecord):
+    """ProjectRecord extended with the on-disk root path (for desktop clients)."""
+    root_path: str
 
 from ..deps import StorageDep
 
@@ -59,12 +66,15 @@ async def create_project(body: CreateProjectRequest, storage: StorageDep) -> Pro
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/{project_id}", response_model=ProjectRecord)
-async def get_project(project_id: SlugPath, storage: StorageDep) -> ProjectRecord:
+@router.get("/{project_id}", response_model=ProjectWithRootPath)
+async def get_project(project_id: SlugPath, storage: StorageDep) -> ProjectWithRootPath:
     record = storage.get_project(project_id)
     if record is None:
         raise HTTPException(status_code=404, detail="project not found")
-    return record
+    return ProjectWithRootPath(
+        **record.model_dump(),
+        root_path=str(storage.project_dir(project_id)),
+    )
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

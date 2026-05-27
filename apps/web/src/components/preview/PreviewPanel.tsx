@@ -4,6 +4,7 @@ import { Box, Loader2 } from "lucide-react";
 
 import { PanelShell } from "@/components/layout/PanelShell";
 import { PreviewConsole } from "@/components/preview/PreviewConsole";
+import { isDesktop } from "@/lib/desktop";
 import {
   useWebContainerStore,
   type WebContainerPhase,
@@ -61,7 +62,7 @@ export function PreviewPanel({
 
   const inner = (
     <div className="flex h-full min-h-0 flex-col">
-        {!isolated ? (
+        {!isolated && !isDesktop() ? (
           <div className="shrink-0 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
             This origin is not cross-origin isolated (`crossOriginIsolated` is false).
             WebContainers need COOP/COEP; confirm dev is served from this Next app, not a
@@ -104,13 +105,11 @@ export function PreviewPanel({
                 <Box className="size-6 text-muted-foreground" />
               </div>
               <div className="max-w-sm space-y-1">
-                <p className="text-sm font-medium">Live sandbox preview</p>
+                <p className="text-sm font-medium">Live preview</p>
                 <p className="text-xs text-muted-foreground">
-                  Run preview mounts your virtual files into a StackBlitz WebContainer,
-                  runs <span className="font-mono">npm install</span> and your{" "}
-                  <span className="font-mono">scripts.dev</span> command, then opens the
-                  dev server URL here. Edits in the editor sync while the preview is
-                  running.
+                  {isDesktop()
+                    ? "Preview runs your project's dev server locally, then embeds it here."
+                    : "Run preview mounts your virtual files into a StackBlitz WebContainer, runs npm install and your scripts.dev command, then opens the dev server URL here. Edits in the editor sync while the preview is running."}
                 </p>
               </div>
             </div>

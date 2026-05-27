@@ -82,10 +82,10 @@ export function WorkspaceShell({
   const lastProjectId = useRef<string | null>(null);
   useEffect(() => {
     if (lastProjectId.current && lastProjectId.current !== projectId) {
-      stopPreview();
+      stopPreview(lastProjectId.current);
     }
     lastProjectId.current = projectId;
-    void startPreview();
+    void startPreview(projectId);
   }, [projectId, startPreview, stopPreview]);
 
   // Populate the model picker once per workspace mount. The store is

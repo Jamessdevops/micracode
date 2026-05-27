@@ -5,6 +5,7 @@
   "description": "Open-source AI-powered web app builder with in-browser Node.js preview.",
   "workspaces": [
     "apps/web",
+    "apps/desktop",
     "packages/*"
   ],
   "engines": {

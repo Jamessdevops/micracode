@@ -4,6 +4,7 @@ import type { FileSystemTree } from "@micracode/shared";
 import type { WebContainer, WebContainerProcess } from "@webcontainer/api";
 import { create } from "zustand";
 
+import { isDesktop } from "@/lib/desktop";
 import { flattenFileSystemTree, useFileSystemStore } from "@/store/fileSystemStore";
 
 export type WebContainerPhase =
@@ -65,8 +66,8 @@ interface WebContainerState {
 }
 
 interface WebContainerActions {
-  startPreview: () => Promise<void>;
-  stopPreview: () => void;
+  startPreview: (projectId?: string) => Promise<void>;
+  stopPreview: (projectId?: string) => void;
   enqueueShell: (command: string, cwd?: string) => void;
   clearOutput: () => void;
   getRecentErrors: (limit?: number) => OutputLine[];
@@ -431,7 +432,10 @@ export const useWebContainerStore = create<WebContainerState & WebContainerActio
   shellQueue: [],
   output: [],
 
-  stopPreview: () => {
+  stopPreview: (projectId) => {
+    if (isDesktop() && projectId) {
+      void window.electronAPI.stopDevServer(projectId);
+    }
     softReset();
     set({
       phase: "idle",
@@ -457,7 +461,7 @@ export const useWebContainerStore = create<WebContainerState & WebContainerActio
     return errs.length > limit ? errs.slice(errs.length - limit) : errs;
   },
 
-  startPreview: async () => {
+  startPreview: async (projectId) => {
     if (typeof window === "undefined") return;
     if (startLock) return;
     if (get().phase !== "idle" && get().phase !== "error") return;
@@ -471,6 +475,22 @@ export const useWebContainerStore = create<WebContainerState & WebContainerActio
           "Preview needs a package.json with a non-empty \"scripts.dev\" entry. Generate a Next.js (or Node) app first.",
         previewUrl: null,
       });
+      return;
+    }
+
+    // Desktop mode: delegate dev server management to Electron main process
+    if (isDesktop() && projectId) {
+      set({ phase: "installing", errorMessage: null, previewUrl: null, output: [] });
+      try {
+        const url = await window.electronAPI.startDevServer(projectId, devScript);
+        set({ previewUrl: url, phase: "ready" });
+      } catch (err) {
+        set({
+          phase: "error",
+          previewUrl: null,
+          errorMessage: err instanceof Error ? err.message : "Failed to start dev server",
+        });
+      }
       return;
     }
 
