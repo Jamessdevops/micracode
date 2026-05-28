@@ -20,9 +20,7 @@ const nextConfig: NextConfig = {
   output: "export",
   trailingSlash: true,
   reactStrictMode: true,
-  experimental: {
-    typedRoutes: true,
-  },
+  typedRoutes: true,
   transpilePackages: ["@micracode/shared", "@webcontainer/api"],
   async headers() {
     return [
