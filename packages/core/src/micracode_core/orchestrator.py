@@ -37,7 +37,7 @@ from .context import load_context
 from .llm import LLMFactory
 from .patcher import ProjectContext
 from .prompts import get_prompt
-from .tools import ALL_TOOLS, execute_grep, execute_list_files, execute_read_file, execute_shell_exec, execute_write_patch
+from .tools import ALL_TOOLS, execute_grep, execute_list_files, execute_read_file, execute_search_replace, execute_shell_exec, execute_write_patch
 
 logger = logging.getLogger(__name__)
 
@@ -187,8 +187,9 @@ def _build_codegen_messages(
         f"User request:\n{prompt or '(empty)'}\n\n"
         f"Plan:\n{plan or '(none)'}\n\n"
         "Use the available tools to implement the plan. Call read_file to "
-        "inspect existing files before modifying them, write_patch to create "
-        "or overwrite files, and shell_exec (only if needed) to run build or "
+        "inspect existing files before modifying them, search_replace for "
+        "targeted edits to existing files, write_patch to create or fully "
+        "overwrite files, and shell_exec (only if needed) to run build or "
         "test commands. Proceed tool call by tool call until the task is "
         "complete, then stop calling tools."
     )
@@ -338,6 +339,25 @@ async def _codegen_tool_loop(
                     result_msg, file_event = execute_write_patch(
                         args.get("path", ""),
                         args.get("content", ""),
+                        project_root,
+                        storage,
+                        project_id,
+                    )
+                    if file_event is not None:
+                        yield file_event
+                    yield ToolResultEvent(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        output=result_msg,
+                        approved=True,
+                    )
+                    tool_result = result_msg
+
+                elif tool_name == "search_replace":
+                    result_msg, file_event = execute_search_replace(
+                        args.get("path", ""),
+                        args.get("old_str", ""),
+                        args.get("new_str", ""),
                         project_root,
                         storage,
                         project_id,

@@ -134,6 +134,49 @@ def execute_list_files(path: str, project_root: Path) -> str:
     return "\n".join(lines) if lines else "(empty directory)"
 
 
+def execute_search_replace(
+    path: str,
+    old_str: str,
+    new_str: str,
+    project_root: Path,
+    storage: Storage,
+    project_id: str,
+) -> tuple[str, "FileWriteEvent | None"]:
+    """Replace the unique occurrence of old_str with new_str in a file."""
+    from .schemas.stream import FileWriteEvent
+
+    rel = _normalize_path(path)
+    if rel is None:
+        return "error: empty path", None
+    if not _path_is_safe(rel):
+        return f"error: path outside project root: {path!r}", None
+
+    file_path = safe_join(project_root, rel)
+    try:
+        current = file_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return f"error: file not found: {path!r}", None
+    except OSError as exc:
+        return f"error: {exc}", None
+
+    count = current.count(old_str)
+    if count == 0:
+        return "error: search string not found in file", None
+    if count > 1:
+        return f"error: search string matches {count} times — make old_str more specific", None
+
+    new_content = current.replace(old_str, new_str, 1)
+    final_content = _ensure_use_client(rel, new_content)
+    final_content = _truncate(final_content)
+
+    try:
+        storage.write_file(project_id, rel, final_content)
+    except (ValueError, OSError) as exc:
+        return f"error writing file: {exc}", None
+
+    return f"replaced in {rel}", FileWriteEvent(path=rel, content=final_content)
+
+
 def execute_shell_exec(command: str, cwd: Path, output_limit: int) -> str:
     """Run a shell command; return combined stdout+stderr (truncated)."""
     try:
@@ -183,6 +226,12 @@ class _ListFilesInput(BaseModel):
     path: str = PField(description="Directory to list (relative to project root). Use '.' for the project root.")
 
 
+class _SearchReplaceInput(BaseModel):
+    path: str = PField(description="File path relative to the project root")
+    old_str: str = PField(description="Exact string to find (must appear exactly once in the file)")
+    new_str: str = PField(description="String to replace it with")
+
+
 READ_FILE_TOOL = StructuredTool.from_function(
     lambda path: "",
     name="read_file",
@@ -221,4 +270,15 @@ LIST_FILES_TOOL = StructuredTool.from_function(
     args_schema=_ListFilesInput,
 )
 
-ALL_TOOLS = [READ_FILE_TOOL, WRITE_PATCH_TOOL, SHELL_EXEC_TOOL, GREP_TOOL, LIST_FILES_TOOL]
+SEARCH_REPLACE_TOOL = StructuredTool.from_function(
+    lambda path, old_str, new_str: "",
+    name="search_replace",
+    description=(
+        "Replace an exact substring in a file. "
+        "old_str must appear exactly once; include more surrounding context if needed. "
+        "Prefer this over write_patch for targeted edits to existing files."
+    ),
+    args_schema=_SearchReplaceInput,
+)
+
+ALL_TOOLS = [READ_FILE_TOOL, WRITE_PATCH_TOOL, SHELL_EXEC_TOOL, GREP_TOOL, LIST_FILES_TOOL, SEARCH_REPLACE_TOOL]
