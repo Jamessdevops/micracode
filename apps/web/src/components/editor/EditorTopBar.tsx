@@ -48,6 +48,7 @@ export function EditorTopBar({
   activeTab,
   onTabChange,
   urlText = "/",
+  onTerminalToggle: _onTerminalToggle,
   onRefresh,
 }: EditorTopBarProps) {
   return (
