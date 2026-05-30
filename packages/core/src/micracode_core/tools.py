@@ -232,6 +232,19 @@ class _SearchReplaceInput(BaseModel):
     new_str: str = PField(description="String to replace it with")
 
 
+class _QuestionInput(BaseModel):
+    question: str = PField(
+        description="A single, specific clarifying question to ask the user"
+    )
+    options: list[str] | None = PField(
+        default=None,
+        description=(
+            "Optional list of suggested answers for the user to pick from. "
+            "The user may still reply with free-form text instead of choosing one."
+        ),
+    )
+
+
 READ_FILE_TOOL = StructuredTool.from_function(
     lambda path: "",
     name="read_file",
@@ -281,4 +294,26 @@ SEARCH_REPLACE_TOOL = StructuredTool.from_function(
     args_schema=_SearchReplaceInput,
 )
 
-ALL_TOOLS = [READ_FILE_TOOL, WRITE_PATCH_TOOL, SHELL_EXEC_TOOL, GREP_TOOL, LIST_FILES_TOOL, SEARCH_REPLACE_TOOL]
+QUESTION_TOOL = StructuredTool.from_function(
+    lambda question, options=None: "",
+    name="question",
+    description=(
+        "Ask the user a clarifying question and pause until they answer. "
+        "Use this when the request is ambiguous and a wrong assumption would "
+        "waste significant work — not for trivial choices you can reasonably "
+        "make yourself. Ask one focused question at a time; optionally supply "
+        "a few suggested answers via `options`. The user's reply is returned "
+        "as the tool result."
+    ),
+    args_schema=_QuestionInput,
+)
+
+ALL_TOOLS = [
+    READ_FILE_TOOL,
+    WRITE_PATCH_TOOL,
+    SHELL_EXEC_TOOL,
+    GREP_TOOL,
+    LIST_FILES_TOOL,
+    SEARCH_REPLACE_TOOL,
+    QUESTION_TOOL,
+]

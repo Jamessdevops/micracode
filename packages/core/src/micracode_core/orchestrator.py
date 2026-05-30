@@ -29,6 +29,7 @@ from .schemas.stream import (
     ToolCallEvent,
     ToolDeniedEvent,
     ToolPermissionRequestEvent,
+    ToolQuestionEvent,
     ToolResultEvent,
 )
 from .storage import Storage
@@ -190,7 +191,9 @@ def _build_codegen_messages(
         "inspect existing files before modifying them, search_replace for "
         "targeted edits to existing files, write_patch to create or fully "
         "overwrite files, and shell_exec (only if needed) to run build or "
-        "test commands. Proceed tool call by tool call until the task is "
+        "test commands. If the request is genuinely ambiguous and a wrong "
+        "guess would waste significant work, call question to ask the user "
+        "before proceeding. Proceed tool call by tool call until the task is "
         "complete, then stop calling tools."
     )
     if family == "openai-reasoning":
@@ -212,6 +215,15 @@ def _build_codegen_messages(
 # Maps request_id -> {tool_call_id: (asyncio.Event, result_holder)}
 _approval_registry: dict[str, dict[str, tuple[asyncio.Event, list[bool]]]] = {}
 
+# Maps request_id -> {tool_call_id: (asyncio.Event, answer_holder)}
+_answer_registry: dict[str, dict[str, tuple[asyncio.Event, list[str]]]] = {}
+
+# Fed to the LLM as the tool result when the user never answers a question.
+_QUESTION_TIMEOUT_SENTINEL = (
+    "(The user did not respond within the time limit. Proceed using your best "
+    "judgment and reasonable default assumptions.)"
+)
+
 
 async def _check_approval(request_id: str, tool_call_id: str) -> bool:
     """Wait for user approval of a pending shell_exec; return the decision.
@@ -227,6 +239,23 @@ async def _check_approval(request_id: str, tool_call_id: str) -> bool:
         return result_holder[0] if result_holder else False
     except asyncio.TimeoutError:
         return False
+
+
+async def _check_answer(request_id: str, tool_call_id: str) -> str | None:
+    """Wait for the user's answer to a pending question.
+
+    Returns the answer text, or ``None`` if no answer arrives before the
+    timeout. Monkeypatched in tests to return an answer immediately.
+    """
+    pending = _answer_registry.get(request_id, {}).get(tool_call_id)
+    if pending is None:
+        return None
+    event, answer_holder = pending
+    try:
+        await asyncio.wait_for(event.wait(), timeout=300.0)
+        return answer_holder[0] if answer_holder else None
+    except asyncio.TimeoutError:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +287,7 @@ async def _codegen_tool_loop(
     project_root = storage.project_dir(project_id)
 
     _approval_registry[request_id] = {}
+    _answer_registry[request_id] = {}
 
     try:
         for iteration in range(config.max_tool_iterations + 1):
@@ -324,6 +354,31 @@ async def _codegen_tool_loop(
                             approved=True,
                         )
                         tool_result = output
+
+                elif tool_name == "question":
+                    question_text: str = args.get("question", "")
+                    options = args.get("options") or []
+                    yield ToolQuestionEvent(
+                        tool_call_id=tool_call_id,
+                        question=question_text,
+                        options=list(options),
+                    )
+
+                    answer_event: asyncio.Event = asyncio.Event()
+                    answer_holder: list[str] = []
+                    _answer_registry[request_id][tool_call_id] = (answer_event, answer_holder)
+
+                    answer = await _check_answer(request_id, tool_call_id)
+                    if answer is None:
+                        answer = _QUESTION_TIMEOUT_SENTINEL
+
+                    yield ToolResultEvent(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        output=answer,
+                        approved=True,
+                    )
+                    tool_result = answer
 
                 elif tool_name == "read_file":
                     output = execute_read_file(args.get("path", ""), project_root)
@@ -413,6 +468,7 @@ async def _codegen_tool_loop(
                 messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
     finally:
         _approval_registry.pop(request_id, None)
+        _answer_registry.pop(request_id, None)
 
 
 async def run_codegen_stream(

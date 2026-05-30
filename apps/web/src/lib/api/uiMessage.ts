@@ -37,6 +37,12 @@ export type MicracodeDataParts = {
     request_id: string;
   };
   "tool-denied": { tool_call_id: string };
+  "tool-question": {
+    tool_call_id: string;
+    question: string;
+    options: string[];
+    request_id: string;
+  };
 };
 
 export interface MicracodeMessageMetadata {

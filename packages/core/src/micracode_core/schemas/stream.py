@@ -78,6 +78,13 @@ class ToolDeniedEvent(_Event):
     tool_call_id: str
 
 
+class ToolQuestionEvent(_Event):
+    type: Literal["tool.question"] = "tool.question"
+    tool_call_id: str
+    question: str
+    options: list[str] = Field(default_factory=list)
+
+
 StreamEvent = Annotated[
     MessageDeltaEvent
     | FileWriteEvent
@@ -88,7 +95,8 @@ StreamEvent = Annotated[
     | ToolCallEvent
     | ToolPermissionRequestEvent
     | ToolResultEvent
-    | ToolDeniedEvent,
+    | ToolDeniedEvent
+    | ToolQuestionEvent,
     Field(discriminator="type"),
 ]
 

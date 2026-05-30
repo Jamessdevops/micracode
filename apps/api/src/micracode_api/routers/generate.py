@@ -12,7 +12,11 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from micracode_core.orchestrator import _approval_registry, run_codegen_stream
+from micracode_core.orchestrator import (
+    _answer_registry,
+    _approval_registry,
+    run_codegen_stream,
+)
 from micracode_core.schemas.stream import GenerateRequest
 from micracode_core.storage import SLUG_RE, Storage
 
@@ -36,6 +40,10 @@ def _new_id(prefix: str) -> str:
 
 class _ApproveRequest(BaseModel):
     approved: bool
+
+
+class _AnswerRequest(BaseModel):
+    answer: str
 
 
 async def _ui_message_stream(
@@ -174,6 +182,18 @@ async def _ui_message_stream(
                         "data": {"tool_call_id": event.tool_call_id},
                     }
                 )
+            elif event.type == "tool.question":
+                yield _frame(
+                    {
+                        "type": "data-tool-question",
+                        "data": {
+                            "tool_call_id": event.tool_call_id,
+                            "question": event.question,
+                            "options": event.options,
+                            "request_id": request_id,
+                        },
+                    }
+                )
             elif event.type == "error":
                 yield _frame({"type": "error", "errorText": event.message})
     except asyncio.CancelledError:
@@ -251,6 +271,28 @@ async def approve_tool(
 
     event, result_holder = approval_data
     result_holder.append(body.approved)
+    event.set()
+
+    return {"ok": True}
+
+
+@router.post("/generate/{request_id}/question/{tool_call_id}/answer")
+async def answer_question(
+    request_id: str,
+    tool_call_id: str,
+    body: _AnswerRequest,
+) -> dict:
+    """Supply the user's answer to a pending question tool call."""
+    request_answers = _answer_registry.get(request_id)
+    if request_answers is None:
+        raise HTTPException(status_code=404, detail="request not found or already completed")
+
+    answer_data = request_answers.get(tool_call_id)
+    if answer_data is None:
+        raise HTTPException(status_code=404, detail="question not found or already answered")
+
+    event, answer_holder = answer_data
+    answer_holder.append(body.answer)
     event.set()
 
     return {"ok": True}

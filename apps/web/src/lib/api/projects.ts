@@ -220,3 +220,21 @@ export async function deleteSnapshot(
     opts,
   );
 }
+
+/**
+ * Answer a clarifying `question` tool call that the generation stream is
+ * currently blocked on. `requestId` is carried on the `tool-question`
+ * data part; the backend resumes the tool loop once the answer arrives.
+ */
+export async function answerQuestion(
+  requestId: string,
+  toolCallId: string,
+  answer: string,
+  opts?: ApiClientOptions,
+): Promise<void> {
+  await request<void>(
+    `/v1/generate/${encodeURIComponent(requestId)}/question/${encodeURIComponent(toolCallId)}/answer`,
+    { method: "POST", body: JSON.stringify({ answer }) },
+    opts,
+  );
+}

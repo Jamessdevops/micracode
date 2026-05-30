@@ -5,6 +5,7 @@ import { DefaultChatTransport } from "ai";
 import {
   ChevronDown,
   ChevronRight,
+  HelpCircle,
   History,
   RefreshCw,
   Search,
@@ -23,6 +24,7 @@ import {
 import { V0ChatInput } from "@/components/chat/V0ChatInput";
 import { env } from "@/lib/env";
 import {
+  answerQuestion,
   getProjectFiles,
   popLastAssistantPrompt,
   restoreSnapshot,
@@ -59,7 +61,21 @@ type ProcessLog =
       reason: string;
       output?: string;
       outputError?: boolean;
+    }
+  | {
+      id: string;
+      kind: "question";
+      toolCallId: string;
+      requestId: string;
+      question: string;
+      options: string[];
+      /** Set once the question is resolved (answered or auto-proceeded). */
+      resolved?: boolean;
+      /** The user's answer; undefined when the turn proceeded without one. */
+      answer?: string;
     };
+
+type QuestionLog = Extract<ProcessLog, { kind: "question" }>;
 
 const autoSubmittedProjectIds = new Set<string>();
 
@@ -172,6 +188,96 @@ function renderLog(
   }
 }
 
+function QuestionCard({
+  log,
+  onAnswer,
+}: {
+  log: QuestionLog;
+  onAnswer: (answer: string) => Promise<void>;
+}) {
+  const [value, setValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = useCallback(
+    async (answer: string) => {
+      const trimmed = answer.trim();
+      if (!trimmed || submitting) return;
+      setSubmitting(true);
+      setErr(null);
+      try {
+        await onAnswer(trimmed);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Failed to send answer");
+        setSubmitting(false);
+      }
+    },
+    [onAnswer, submitting],
+  );
+
+  return (
+    <div className="my-1 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-xs">
+      <div className="mb-1.5 flex items-center gap-1.5 text-zinc-300">
+        <HelpCircle className="size-3.5 text-amber-400" />
+        <span className="font-medium">Needs your input</span>
+      </div>
+      <div className="mb-2 whitespace-pre-wrap text-zinc-200">{log.question}</div>
+
+      {log.resolved ? (
+        <div className="text-zinc-500">
+          <span className="text-zinc-400">Answered:</span>{" "}
+          {log.answer ?? "(proceeded without an answer)"}
+        </div>
+      ) : (
+        <>
+          {log.options.length > 0 ? (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {log.options.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => void submit(opt)}
+                  className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-zinc-200 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit(value);
+            }}
+            className="flex items-center gap-1.5"
+          >
+            <input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={submitting}
+              placeholder={
+                log.options.length > 0
+                  ? "…or type your own answer"
+                  : "Type your answer…"
+              }
+              className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100 outline-none transition focus:border-zinc-500 disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={submitting || !value.trim()}
+              className="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-zinc-200 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? "Sending…" : "Send"}
+            </button>
+          </form>
+          {err ? <div className="mt-1 text-red-400">{err}</div> : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function V0ChatPanel({
   projectId,
   initialMessages,
@@ -272,6 +378,45 @@ export function V0ChatPanel({
     [],
   );
 
+  const patchQuestionLog = useCallback(
+    (
+      toolCallId: string,
+      patch: Partial<QuestionLog>,
+      onlyIfUnresolved = false,
+    ) => {
+      setLogsByAssistantId((prev) => {
+        for (const [assistantId, logs] of Object.entries(prev)) {
+          const idx = logs.findIndex(
+            (l) => l.kind === "question" && l.toolCallId === toolCallId,
+          );
+          if (idx === -1) continue;
+          const q = logs[idx] as QuestionLog;
+          if (onlyIfUnresolved && q.resolved) return prev;
+          const updated = [...logs];
+          updated[idx] = { ...q, ...patch };
+          return { ...prev, [assistantId]: updated };
+        }
+        return prev;
+      });
+    },
+    [],
+  );
+
+  const handleAnswer = useCallback(
+    async (log: QuestionLog, answer: string) => {
+      // Optimistically resolve so the card flips to "Answered" immediately and
+      // the server's own tool.result (which arrives after we POST) is a no-op.
+      patchQuestionLog(log.toolCallId, { resolved: true, answer });
+      try {
+        await answerQuestion(log.requestId, log.toolCallId, answer);
+      } catch (e) {
+        patchQuestionLog(log.toolCallId, { resolved: false, answer: undefined });
+        throw e;
+      }
+    },
+    [patchQuestionLog],
+  );
+
   const { messages, setMessages, sendMessage, status, error, stop } =
     useChat<MicracodeUIMessage>({
       id: projectId,
@@ -297,6 +442,9 @@ export function V0ChatPanel({
           }
           case "data-tool-call": {
             const { tool_call_id, tool_name, args, reason } = part.data;
+            // The question tool renders as an interactive card via
+            // `data-tool-question`; skip the generic log row for it.
+            if (tool_name === "question") break;
             setMessages((prev) => {
               appendLogToLatestAssistant(
                 {
@@ -313,8 +461,30 @@ export function V0ChatPanel({
             });
             break;
           }
+          case "data-tool-question": {
+            const { tool_call_id, question, options, request_id } = part.data;
+            setMessages((prev) => {
+              appendLogToLatestAssistant(
+                {
+                  id: nextLogId(),
+                  kind: "question",
+                  toolCallId: tool_call_id,
+                  requestId: request_id,
+                  question,
+                  options: options ?? [],
+                },
+                prev,
+              );
+              return prev;
+            });
+            break;
+          }
           case "data-tool-result": {
             const { tool_call_id, output, approved } = part.data;
+            // If this is the result for a question the user never answered,
+            // the server fed its own sentinel — flip the card to a resolved,
+            // answer-less state. No-op once the user has already answered.
+            patchQuestionLog(tool_call_id, { resolved: true }, true);
             updateLogOutput(tool_call_id, output, !approved);
             break;
           }
@@ -530,9 +700,19 @@ export function V0ChatPanel({
               <div key={m.id} className="space-y-2 text-sm">
                 {logs.length > 0 ? (
                   <div className="space-y-0.5">
-                    {logs.map((log) => (
-                      <div key={log.id}>{renderLog(log, expandedLogs, toggleExpanded)}</div>
-                    ))}
+                    {logs.map((log) =>
+                      log.kind === "question" ? (
+                        <QuestionCard
+                          key={log.id}
+                          log={log}
+                          onAnswer={(answer) => handleAnswer(log, answer)}
+                        />
+                      ) : (
+                        <div key={log.id}>
+                          {renderLog(log, expandedLogs, toggleExpanded)}
+                        </div>
+                      ),
+                    )}
                   </div>
                 ) : null}
 
