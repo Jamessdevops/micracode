@@ -22,6 +22,7 @@ dependencies = [
     "langchain-google-genai>=2.0.0",
     "langchain-openai>=0.2.0",
     "langchain-ollama>=0.2.0",
+    "pathspec>=0.12.0",
 ]
 
 [project.urls]

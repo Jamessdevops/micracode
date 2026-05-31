@@ -11,6 +11,7 @@ import re
 import subprocess
 from pathlib import Path
 
+import pathspec
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 from pydantic import Field as PField
@@ -107,6 +108,82 @@ def execute_grep(pattern: str, path: str, project_root: Path) -> str:
     if not results:
         return "no matches found"
     return "\n".join(results)
+
+
+def _gitignore_style() -> str:
+    """Prefer the non-deprecated 'gitignore' factory; fall back for older pathspec."""
+    try:
+        pathspec.PathSpec.from_lines("gitignore", [])
+        return "gitignore"
+    except KeyError:
+        return "gitwildmatch"
+
+
+_GITIGNORE_STYLE = _gitignore_style()
+
+
+def _load_gitignore_spec(project_root: Path) -> "pathspec.PathSpec":
+    """Build a gitignore matcher from the project's .gitignore, always ignoring .git/."""
+    patterns = [".git/"]
+    gitignore = project_root / ".gitignore"
+    if gitignore.is_file():
+        try:
+            patterns += gitignore.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            pass
+    return pathspec.PathSpec.from_lines(_GITIGNORE_STYLE, patterns)
+
+
+def execute_glob(pattern: str, path: str, project_root: Path) -> str:
+    """Find files matching a glob pattern; return paths sorted by mtime (newest first).
+
+    Files ignored by the project's .gitignore (and anything under .git/) are skipped.
+    """
+    if not pattern:
+        return "error: empty pattern"
+
+    if path and path != ".":
+        rel = _normalize_path(path)
+        if rel is None:
+            return "error: empty path"
+        if not _path_is_safe(rel):
+            return f"error: path outside project root: {path!r}"
+        search_root = safe_join(project_root, rel)
+    else:
+        search_root = project_root
+
+    if not search_root.exists():
+        return f"error: path not found: {path!r}"
+    if not search_root.is_dir():
+        return f"error: not a directory: {path!r}"
+
+    spec = _load_gitignore_spec(project_root)
+    try:
+        matches = [
+            p
+            for p in search_root.glob(pattern)
+            if p.is_file()
+            and not spec.match_file(p.relative_to(project_root).as_posix())
+        ]
+    except (ValueError, OSError) as exc:
+        return f"error: invalid pattern: {exc}"
+
+    def _mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    matches.sort(key=_mtime, reverse=True)
+
+    if not matches:
+        return "no files found"
+
+    truncated = len(matches) > 200
+    lines = [str(p.relative_to(project_root)) for p in matches[:200]]
+    if truncated:
+        lines.append("[truncated at 200 matches]")
+    return "\n".join(lines)
 
 
 def execute_list_files(path: str, project_root: Path) -> str:
@@ -222,6 +299,15 @@ class _GrepInput(BaseModel):
     path: str = PField(description="File or directory to search in (relative to project root). Use '.' for the entire project.")
 
 
+class _GlobInput(BaseModel):
+    pattern: str = PField(
+        description="Glob pattern to match file paths, e.g. '**/*.py' or 'src/*.ts'."
+    )
+    path: str = PField(
+        description="Directory to search in (relative to project root). Use '.' for the entire project."
+    )
+
+
 class _ListFilesInput(BaseModel):
     path: str = PField(description="Directory to list (relative to project root). Use '.' for the project root.")
 
@@ -276,6 +362,18 @@ GREP_TOOL = StructuredTool.from_function(
     args_schema=_GrepInput,
 )
 
+GLOB_TOOL = StructuredTool.from_function(
+    lambda pattern, path: "",
+    name="glob",
+    description=(
+        "Find files by glob pattern (e.g. '**/*.py', 'src/*.ts'). "
+        "Returns matching file paths sorted by modification time, newest first. "
+        "Files ignored by the project's .gitignore are skipped. "
+        "Use this to locate files by name or extension when you don't know exact paths."
+    ),
+    args_schema=_GlobInput,
+)
+
 LIST_FILES_TOOL = StructuredTool.from_function(
     lambda path: "",
     name="list_files",
@@ -313,6 +411,7 @@ ALL_TOOLS = [
     WRITE_PATCH_TOOL,
     SHELL_EXEC_TOOL,
     GREP_TOOL,
+    GLOB_TOOL,
     LIST_FILES_TOOL,
     SEARCH_REPLACE_TOOL,
     QUESTION_TOOL,

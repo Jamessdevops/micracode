@@ -38,7 +38,7 @@ from .context import load_context
 from .llm import LLMFactory
 from .patcher import ProjectContext
 from .prompts import get_prompt
-from .tools import ALL_TOOLS, execute_grep, execute_list_files, execute_read_file, execute_search_replace, execute_shell_exec, execute_write_patch
+from .tools import ALL_TOOLS, execute_glob, execute_grep, execute_list_files, execute_read_file, execute_search_replace, execute_shell_exec, execute_write_patch
 
 logger = logging.getLogger(__name__)
 
@@ -430,6 +430,21 @@ async def _codegen_tool_loop(
                 elif tool_name == "grep":
                     output = await asyncio.to_thread(
                         execute_grep,
+                        args.get("pattern", ""),
+                        args.get("path", "."),
+                        project_root,
+                    )
+                    yield ToolResultEvent(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        output=output,
+                        approved=True,
+                    )
+                    tool_result = output
+
+                elif tool_name == "glob":
+                    output = await asyncio.to_thread(
+                        execute_glob,
                         args.get("pattern", ""),
                         args.get("path", "."),
                         project_root,
