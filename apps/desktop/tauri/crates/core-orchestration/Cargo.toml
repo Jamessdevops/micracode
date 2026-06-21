@@ -1,0 +1,18 @@
+[package]
+name = "core-orchestration"
+version = "0.1.0"
+edition = "2021"
+description = "Event-sourced command/event engine for the Micracode Rust core."
+
+[dependencies]
+core-persistence = { path = "../core-persistence" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+# Reactors + receipt bus (PRD FR3): mpsc job queues, broadcast receipts, and a
+# watch-based idle signal for deterministic drain-to-idle.
+tokio = { version = "1", features = ["sync", "rt"] }
+ts-rs = { version = "10", features = ["serde-json-impl"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

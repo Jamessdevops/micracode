@@ -1,0 +1,19 @@
+[package]
+name = "core-terminal"
+version = "0.1.0"
+edition = "2021"
+description = "PTY-backed terminals + dev-server preview manager for the Micracode core (PRD FR7)."
+authors = ["Micracode"]
+rust-version = "1.77.2"
+
+[dependencies]
+# PTY sessions (PRD §9 Effect→Rust mapping: node-pty → portable-pty).
+portable-pty = "0.8"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+# Preview manager: spawn the dev server, scan ports, watch its lifecycle.
+tokio = { version = "1", features = ["process", "net", "time", "rt", "sync", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "process"] }
+tempfile = "3"

@@ -141,7 +141,7 @@ function RecentTable({ projects }: { projects: ProjectRecord[] }) {
         {projects.map((p) => (
           <li key={p.id} className="group relative">
             <Link
-              href={`/projects?id=${p.id}`}
+              href={{ pathname: "/projects", query: { id: p.id } }}
               className="grid grid-cols-[140px_1fr_200px_40px] items-center gap-4 rounded-md px-4 py-4 text-sm transition-all duration-200 ease-in-out hover:bg-[#1b1b1e]"
             >
               <span className="font-mono text-xs text-zinc-400">

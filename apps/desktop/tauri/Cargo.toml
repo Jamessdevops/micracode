@@ -1,0 +1,30 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[package]
+name = "micracode-desktop-tauri"
+version = "0.1.0"
+description = "Micracode desktop shell (Tauri 2.0)"
+authors = ["Micracode"]
+edition = "2021"
+rust-version = "1.77.2"
+
+# The `_lib` suffix keeps the library name from colliding with the binary on
+# Windows, which is the convention Tauri 2.0 scaffolds use.
+[lib]
+name = "micracode_desktop_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# Enabled by `tauri dev`/`tauri build` so the webview can use devtools, etc.
+custom-protocol = ["tauri/custom-protocol"]
