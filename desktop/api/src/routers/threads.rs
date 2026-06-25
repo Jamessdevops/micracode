@@ -112,6 +112,7 @@ printf '%s\n' '{"id":"1","msg":{"type":"task_complete","last_agent_message":"hel
                 model: None,
                 resume: None,
                 harness: core_provider::Harness::Codex,
+                permission: Default::default(),
             })
             .await
             .unwrap();
@@ -203,6 +204,7 @@ printf '%s\n' '{"id":"1","msg":{"type":"task_complete","last_agent_message":"hel
                 model: None,
                 resume: None,
                 harness: core_provider::Harness::Codex,
+                permission: Default::default(),
             })
             .await
             .unwrap();

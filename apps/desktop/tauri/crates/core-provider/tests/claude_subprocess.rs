@@ -47,6 +47,7 @@ async fn drives_a_turn_and_normalizes_the_stream_json_transcript() {
             model: None,
             resume: None,
             harness: Harness::Claude,
+            permission: Default::default(),
         })
         .await
         .expect("session starts");

@@ -47,6 +47,7 @@ async fn drives_a_turn_and_normalizes_the_transcript() {
             model: None,
             resume: None,
             harness: core_provider::Harness::Codex,
+            permission: Default::default(),
         })
         .await
         .expect("session starts");
@@ -85,6 +86,7 @@ async fn missing_binary_surfaces_a_spawn_error() {
             model: None,
             resume: None,
             harness: core_provider::Harness::Codex,
+            permission: Default::default(),
         })
         .await;
     assert!(matches!(

@@ -63,6 +63,39 @@ impl Harness {
         }
     }
 
+    /// Map a permission mode onto this harness's launch flags (PRD FR1). Both
+    /// agents run headless — nothing can answer an interactive approval prompt —
+    /// so every mode resolves to non-blocking flags: Claude uses
+    /// `--permission-mode <mode>` (or the dedicated `--dangerously-skip-permissions`
+    /// for bypass), and Codex keeps `approval_policy="never"` while varying the
+    /// sandbox tier. Appended to `command_args`.
+    fn permission_args(self, permission: PermissionMode) -> Vec<String> {
+        match self {
+            Harness::Claude => match permission {
+                // The one the user calls out: full autonomy, no checks.
+                PermissionMode::BypassPermissions => {
+                    vec!["--dangerously-skip-permissions".into()]
+                }
+                mode => vec!["--permission-mode".into(), mode.as_str().into()],
+            },
+            Harness::Codex => {
+                // Codex `proto` can't answer approvals headlessly, so approval
+                // stays "never" and the *sandbox* carries the permission tier.
+                let sandbox = match permission {
+                    PermissionMode::Default | PermissionMode::Plan => "read-only",
+                    PermissionMode::AcceptEdits => "workspace-write",
+                    PermissionMode::BypassPermissions => "danger-full-access",
+                };
+                vec![
+                    "-c".into(),
+                    "approval_policy=\"never\"".into(),
+                    "-c".into(),
+                    format!("sandbox_mode=\"{sandbox}\""),
+                ]
+            }
+        }
+    }
+
     /// The full argument vector (after the program name) for one session.
     ///
     /// Both default to fully autonomous, headless operation — the agent edits
@@ -72,13 +105,9 @@ impl Harness {
     pub fn command_args(self, opts: &SessionOptions) -> Vec<String> {
         match self {
             Harness::Codex => {
-                let mut args = vec![
-                    "proto".into(),
-                    "-c".into(),
-                    "approval_policy=\"never\"".into(),
-                    "-c".into(),
-                    "sandbox_mode=\"workspace-write\"".into(),
-                ];
+                let mut args = vec!["proto".into()];
+                // approval/sandbox flags come from the permission mode.
+                args.extend(self.permission_args(opts.permission));
                 if let Some(model) = &opts.model {
                     args.push("-c".into());
                     args.push(format!("model=\"{model}\""));
@@ -103,8 +132,10 @@ impl Harness {
                     "--input-format".into(),
                     "stream-json".into(),
                     "--verbose".into(),
-                    "--dangerously-skip-permissions".into(),
                 ];
+                // Permission mode → `--dangerously-skip-permissions` (bypass) or
+                // `--permission-mode <mode>` (every other mode).
+                args.extend(self.permission_args(opts.permission));
                 if let Some(model) = &opts.model {
                     args.push("--model".into());
                     args.push(model.clone());
@@ -171,6 +202,54 @@ impl Harness {
     }
 }
 
+/// How much autonomy the agent is granted over its workspace — the user-facing
+/// "permission mode", chosen per session and mapped onto each harness's own
+/// permission/sandbox flags by [`Harness::permission_args`].
+///
+/// The variants mirror Claude Code's `--permission-mode` values so the wire
+/// tokens line up: `default`, `plan`, `acceptEdits`, `bypassPermissions`. The
+/// HTTP layer accepts the token on `POST /v1/sessions` and persists it in
+/// `session.start_requested`, so a resumed session re-applies the same mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PermissionMode {
+    /// Standard prompting. Headless (nothing answers prompts), so tools that
+    /// would need approval are effectively denied — safe but limited.
+    Default,
+    /// Planning only: the agent reads and proposes but does not modify files.
+    Plan,
+    /// Auto-accept file edits within the workspace; other actions still gated.
+    AcceptEdits,
+    /// Bypass every permission check (`claude --dangerously-skip-permissions`;
+    /// Codex `sandbox_mode="danger-full-access"`). Fully autonomous. The default,
+    /// preserving the prior always-skip behavior so existing flows keep working.
+    #[default]
+    BypassPermissions,
+}
+
+impl PermissionMode {
+    /// Parse the wire token, falling back to the default for anything unknown so
+    /// a stale or absent value never wedges a session.
+    pub fn from_token(token: Option<&str>) -> Self {
+        match token.map(str::trim) {
+            Some("default") => PermissionMode::Default,
+            Some("plan") => PermissionMode::Plan,
+            Some("acceptEdits") => PermissionMode::AcceptEdits,
+            _ => PermissionMode::BypassPermissions,
+        }
+    }
+
+    /// The wire/CLI token (`default` / `plan` / `acceptEdits` / `bypassPermissions`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PermissionMode::Default => "default",
+            PermissionMode::Plan => "plan",
+            PermissionMode::AcceptEdits => "acceptEdits",
+            PermissionMode::BypassPermissions => "bypassPermissions",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,6 +261,7 @@ mod tests {
             model: None,
             resume: None,
             harness: Harness::Codex,
+            permission: PermissionMode::default(),
         }
     }
 
@@ -239,5 +319,64 @@ mod tests {
         assert!(Harness::Claude.encode_interrupt("0").is_none());
         assert!(Harness::Claude.encode_shutdown("0").is_none());
         assert!(Harness::Codex.encode_interrupt("0").is_some());
+    }
+
+    #[test]
+    fn permission_token_round_trips_and_defaults_to_bypass() {
+        assert_eq!(PermissionMode::from_token(Some("default")), PermissionMode::Default);
+        assert_eq!(PermissionMode::from_token(Some("plan")), PermissionMode::Plan);
+        assert_eq!(
+            PermissionMode::from_token(Some("acceptEdits")),
+            PermissionMode::AcceptEdits
+        );
+        assert_eq!(
+            PermissionMode::from_token(Some("bypassPermissions")),
+            PermissionMode::BypassPermissions
+        );
+        // Unknown / absent → bypass (the default), so a stale value never wedges.
+        assert_eq!(PermissionMode::from_token(Some("bogus")), PermissionMode::BypassPermissions);
+        assert_eq!(PermissionMode::from_token(None), PermissionMode::BypassPermissions);
+        assert_eq!(PermissionMode::default(), PermissionMode::BypassPermissions);
+    }
+
+    #[test]
+    fn claude_permission_mode_maps_to_flags() {
+        let args = |p| {
+            Harness::Claude.command_args(&SessionOptions {
+                harness: Harness::Claude,
+                permission: p,
+                ..opts()
+            })
+        };
+        // Bypass uses the dedicated dangerous flag, no --permission-mode.
+        let bypass = args(PermissionMode::BypassPermissions);
+        assert!(bypass.iter().any(|a| a == "--dangerously-skip-permissions"));
+        assert!(!bypass.iter().any(|a| a == "--permission-mode"));
+        // Every other mode uses --permission-mode <token> and never the dangerous flag.
+        for (mode, token) in [
+            (PermissionMode::Default, "default"),
+            (PermissionMode::Plan, "plan"),
+            (PermissionMode::AcceptEdits, "acceptEdits"),
+        ] {
+            let a = args(mode);
+            assert!(a.windows(2).any(|w| w == ["--permission-mode", token]), "{token}: {a:?}");
+            assert!(!a.iter().any(|x| x == "--dangerously-skip-permissions"));
+        }
+    }
+
+    #[test]
+    fn codex_permission_mode_maps_to_sandbox_tier() {
+        let sandbox = |p| {
+            Harness::Codex
+                .command_args(&SessionOptions { permission: p, ..opts() })
+                .join(" ")
+        };
+        assert!(sandbox(PermissionMode::Plan).contains("sandbox_mode=\"read-only\""));
+        assert!(sandbox(PermissionMode::Default).contains("sandbox_mode=\"read-only\""));
+        assert!(sandbox(PermissionMode::AcceptEdits).contains("sandbox_mode=\"workspace-write\""));
+        assert!(sandbox(PermissionMode::BypassPermissions)
+            .contains("sandbox_mode=\"danger-full-access\""));
+        // Approval stays "never" regardless — nothing can answer prompts headlessly.
+        assert!(sandbox(PermissionMode::Default).contains("approval_policy=\"never\""));
     }
 }

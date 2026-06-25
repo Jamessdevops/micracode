@@ -14,8 +14,8 @@ use std::sync::Arc;
 use core_orchestration::{Command, Engine, Reactor, ReceiptBus, RuntimeReceipt};
 use core_persistence::DomainEvent;
 use core_provider::{
-    ClaudeDriver, CodexDriver, Harness, ProviderDriver, ProviderError, ProviderEvent, SessionHandle,
-    SessionOptions,
+    ClaudeDriver, CodexDriver, Harness, PermissionMode, ProviderDriver, ProviderError,
+    ProviderEvent, SessionHandle, SessionOptions,
 };
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
@@ -64,6 +64,8 @@ struct RecoveredSession {
     model: Option<String>,
     /// Which agent the session ran on, so resume re-launches the same one.
     harness: Harness,
+    /// The permission mode the session ran under, so resume re-applies it.
+    permission: PermissionMode,
     /// The agent's own session id, if the session ever reported one. Required to
     /// actually resume the conversation (the resume mechanism is harness-specific).
     provider_session_id: Option<String>,
@@ -209,6 +211,7 @@ impl ProviderManager {
             model: prior.model,
             resume: Some(provider_session_id),
             harness: prior.harness,
+            permission: prior.permission,
         };
         self.spawn(session_id.to_string(), opts).await.map(Some)
     }
@@ -226,6 +229,7 @@ impl ProviderManager {
         let workspace = opts.workspace.clone();
         let model = opts.model.clone();
         let harness = opts.harness;
+        let permission = opts.permission;
         // Pick the agent driver for this session (PRD §4). Both yield the same
         // `Session`, so everything below is harness-blind.
         let session = match harness {
@@ -250,6 +254,7 @@ impl ProviderManager {
                 "workspace": workspace.to_string_lossy(),
                 "model": model,
                 "harness": harness.as_str(),
+                "permission": permission.as_str(),
             }),
         );
 
@@ -342,6 +347,9 @@ impl ProviderManager {
                     let harness = Harness::from_token(
                         event.payload.get("harness").and_then(Value::as_str),
                     );
+                    let permission = PermissionMode::from_token(
+                        event.payload.get("permission").and_then(Value::as_str),
+                    );
                     // Latest start wins; carry forward any id learned so far.
                     let provider_session_id =
                         recovered.as_ref().and_then(|r| r.provider_session_id.clone());
@@ -349,6 +357,7 @@ impl ProviderManager {
                         workspace,
                         model,
                         harness,
+                        permission,
                         provider_session_id,
                     });
                 }
@@ -571,6 +580,7 @@ printf '%s\n' '{"id":"1","msg":{"type":"task_complete","last_agent_message":"ok"
                 model: None,
                 resume: None,
                 harness: Harness::Codex,
+                permission: Default::default(),
             })
             .await
             .expect("session starts");
@@ -644,6 +654,7 @@ printf '%s\n' '{"id":"1","msg":{"type":"task_complete","last_agent_message":"ok"
                 model: None,
                 resume: None,
                 harness: Harness::Codex,
+                permission: Default::default(),
             })
             .await
             .expect("session starts");
@@ -735,6 +746,7 @@ printf '%s\n' '{"id":"1","msg":{"type":"task_complete","last_agent_message":"ok"
                 model: None,
                 resume: None,
                 harness: Harness::Codex,
+                permission: Default::default(),
             })
             .await
             .expect("session starts");
@@ -841,6 +853,7 @@ printf '%s\n' '{"id":"1","msg":{"type":"task_complete","last_agent_message":"ok"
                 model: None,
                 resume: None,
                 harness: Harness::Codex,
+                permission: Default::default(),
             })
             .await
             .expect("session starts");

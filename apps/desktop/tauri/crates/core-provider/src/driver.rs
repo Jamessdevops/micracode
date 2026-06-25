@@ -26,7 +26,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{mpsc, Mutex};
 
-use crate::harness::Harness;
+use crate::harness::{Harness, PermissionMode};
 use crate::event::ProviderEvent;
 
 /// Capacity of the per-session normalized-event channel.
@@ -99,6 +99,9 @@ pub struct SessionOptions {
     pub resume: Option<String>,
     /// Which agent CLI backs this session (PRD §4).
     pub harness: Harness,
+    /// How much autonomy the agent has over the workspace (PRD FR1). Mapped onto
+    /// the CLI's permission/sandbox flags by [`Harness::permission_args`].
+    pub permission: PermissionMode,
 }
 
 /// A provider driver: the seam each agent implements (PRD §4). Both built-in

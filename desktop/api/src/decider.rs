@@ -15,7 +15,7 @@ use core_persistence::DomainEvent;
 use serde_json::json;
 
 /// Start a provider session bound to a workspace. Payload: `session_id`
-/// (required), `workspace`, `model`, and `harness` (optional).
+/// (required), `workspace`, `model`, `harness`, and `permission` (optional).
 pub const CMD_START_SESSION: &str = "start_session";
 /// Send a user turn to a session. Payload: `session_id` and `text` (both required).
 pub const CMD_SEND_TURN: &str = "send_turn";
@@ -33,8 +33,9 @@ pub fn decide(command: &Command) -> Result<Vec<DomainEvent>, DeciderError> {
             let session_id = require_str(command, "session_id")?;
             let mut payload = json!({ "session_id": session_id });
             // Carry the optional context through verbatim when present. `harness`
-            // is recorded so a resumed session re-launches the same agent (FR1).
-            for key in ["workspace", "model", "harness"] {
+            // and `permission` are recorded so a resumed session re-launches the
+            // same agent with the same autonomy (FR1).
+            for key in ["workspace", "model", "harness", "permission"] {
                 if let Some(value) = command.payload.get(key) {
                     if !value.is_null() {
                         payload[key] = value.clone();

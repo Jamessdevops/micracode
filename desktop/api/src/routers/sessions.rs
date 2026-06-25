@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use axum::extract::{Path, State};
 use axum::routing::post;
 use axum::{Json, Router};
-use core_provider::{Harness, SessionOptions};
+use core_provider::{Harness, PermissionMode, SessionOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -41,6 +41,11 @@ pub struct StartSessionRequest {
     /// Which agent CLI backs the session — `"codex"` (default) or `"claude"`.
     #[serde(default)]
     pub harness: Harness,
+    /// How much autonomy the agent has — `"bypassPermissions"` (default; runs
+    /// `claude --dangerously-skip-permissions`), `"acceptEdits"`, `"plan"`, or
+    /// `"default"`. Maps onto the CLI's permission/sandbox flags.
+    #[serde(default)]
+    pub permission: PermissionMode,
 }
 
 #[derive(Debug, Serialize)]
@@ -48,6 +53,8 @@ pub struct StartSessionResponse {
     pub session_id: String,
     /// Echo the agent the session actually started on.
     pub harness: Harness,
+    /// Echo the permission mode the session actually started under.
+    pub permission: PermissionMode,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,11 +85,13 @@ async fn start_session(
 ) -> ApiResult<StartSessionResponse> {
     let workspace = resolve_workspace(&state, &req)?;
     let harness = req.harness;
+    let permission = req.permission;
     let opts = SessionOptions {
         workspace,
         model: req.model.clone(),
         resume: None,
         harness,
+        permission,
     };
     let session_id = state
         .provider
@@ -92,6 +101,7 @@ async fn start_session(
     Ok(Json(StartSessionResponse {
         session_id,
         harness,
+        permission,
     }))
 }
 

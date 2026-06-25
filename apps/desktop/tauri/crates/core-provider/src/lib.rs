@@ -20,4 +20,4 @@ pub use driver::{
     SessionHandle, SessionOptions,
 };
 pub use event::ProviderEvent;
-pub use harness::Harness;
+pub use harness::{Harness, PermissionMode};
