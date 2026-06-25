@@ -30,7 +30,7 @@
 
 ---
 
-## ⚡ Quick Install
+## Quick Install
 
 ```bash
 pip install micracode
@@ -87,25 +87,25 @@ Star us, and you will receive all release notifications from GitHub without any 
 
 ---
 
-## ✨ Features
+## Features
 
-- **🛠️ Natural-Language Codegen** — Describe an app in plain English; Micracode streams a working project into the workspace file by file.
+- ** Natural-Language Codegen** — Describe an app in plain English; Micracode streams a working project into the workspace file by file.
 
-- **💬 Iterative Chat** — Refine your project through conversation. Ask for changes, fixes, or new features and watch them stream in.
+- ** Iterative Chat** — Refine your project through conversation. Ask for changes, fixes, or new features and watch them stream in.
 
-- **📝 In-Browser Monaco Editor** — Edit generated code directly in a full Monaco editor; changes persist to disk.
+- ** In-Browser Monaco Editor** — Edit generated code directly in a full Monaco editor; changes persist to disk.
 
-- **🔌 Pluggable LLM Providers** — Ships with Google Gemini by default; switch to OpenAI or local Ollama with one env var. Ollama models are discovered dynamically — no API key required.
+- ** Pluggable LLM Providers** — Ships with Google Gemini by default; switch to OpenAI or local Ollama with one env var. Ollama models are discovered dynamically — no API key required.
 
-- **📦 Local-First Storage** — Projects live as plain folders on your filesystem. No database, no auth, no cloud service required.
+- ** Local-First Storage** — Projects live as plain folders on your filesystem. No database, no auth, no cloud service required.
 
-- **🧪 Streaming Backend** — Server-sent events deliver generated code in real time using a typed stream-event contract shared between web and API.
+- ** Streaming Backend** — Server-sent events deliver generated code in real time using a typed stream-event contract shared between web and API.
 
-- **🗂️ Snapshots & Prompt History** — Every project keeps its prompt history and snapshots so you can review or roll back.
+- ** Snapshots & Prompt History** — Every project keeps its prompt history and snapshots so you can review or roll back.
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 ### Backend
 - **FastAPI** — High-performance Python web framework
@@ -130,7 +130,7 @@ Star us, and you will receive all release notifications from GitHub without any 
 
 ---
 
-## 🛠️ Development Setup
+## Development Setup
 
 > For contributors and people building from source. If you just want to use Micracode, see [Quick Install](#-quick-install) above.
 
@@ -201,7 +201,7 @@ Open <http://localhost:3000>, type a project description into the prompt box, an
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 micracode/
@@ -235,7 +235,7 @@ micracode/
 
 ---
 
-## 🔌 API Endpoints
+## API Endpoints
 
 All endpoints are mounted under `/v1`.
 
@@ -257,7 +257,7 @@ All endpoints are mounted under `/v1`.
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 End-user docs live in [`docs/`](./docs/README.md):
 
@@ -270,7 +270,7 @@ End-user docs live in [`docs/`](./docs/README.md):
 
 ---
 
-## 🧰 Useful Scripts
+## Useful Scripts
 
 ```bash
 bun run dev           # web + api in parallel
@@ -286,13 +286,13 @@ bun run api:format    # ruff format
 
 ---
 
-## 📝 License
+## License
 
 This project is licensed under the [MIT License](LICENSE).
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Feel free to open issues and pull requests.
 
