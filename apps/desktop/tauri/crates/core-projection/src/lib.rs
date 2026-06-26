@@ -83,6 +83,13 @@ pub struct Thread {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub provider_session_id: Option<String>,
+    /// Filesystem path of the workspace/folder this session was opened in,
+    /// learned from `session.start_requested`. Lets list views group threads
+    /// by folder (PRD FR2). `None` for threads started without an explicit
+    /// workspace (the default `OPENER_APPS_DIR`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub workspace: Option<String>,
     pub status: ThreadStatus,
     pub turns: Vec<Turn>,
     /// Global `seq` of the last event applied to this thread.
@@ -97,6 +104,11 @@ pub struct ThreadSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub provider_session_id: Option<String>,
+    /// Workspace/folder path this thread was opened in; lets the list group by
+    /// folder. `None` when started without an explicit workspace.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub workspace: Option<String>,
     pub status: ThreadStatus,
     #[ts(type = "number")]
     pub turn_count: usize,
@@ -144,6 +156,22 @@ impl Projection {
         let session_id = session_id.to_string();
 
         match event.kind.as_str() {
+            // The session-start command (PRD FR2) leads each thread in the log
+            // and carries the resolved workspace path. Recording it here lets
+            // list views group threads by the folder they were opened in, and
+            // creates the thread row before its first turn.
+            "session.start_requested" => {
+                let workspace = event
+                    .payload
+                    .get("workspace")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let thread = self.thread_mut(&session_id);
+                thread.last_seq = event.seq;
+                if workspace.is_some() {
+                    thread.workspace = workspace;
+                }
+            }
             "provider.user_turn" => {
                 let text = event
                     .payload
@@ -268,6 +296,7 @@ impl Projection {
                 Thread {
                     id: session_id.to_string(),
                     provider_session_id: None,
+                    workspace: None,
                     status: ThreadStatus::Active,
                     turns: Vec::new(),
                     last_seq: 0,
@@ -290,6 +319,7 @@ impl Projection {
             .map(|thread| ThreadSummary {
                 id: thread.id.clone(),
                 provider_session_id: thread.provider_session_id.clone(),
+                workspace: thread.workspace.clone(),
                 status: thread.status.clone(),
                 turn_count: thread.turns.len(),
                 last_seq: thread.last_seq,
@@ -328,6 +358,14 @@ mod tests {
             seq,
             kind,
             payload: json!({ "session_id": session_id, "event": event }),
+        }
+    }
+
+    fn start_requested(seq: u64, session_id: &str, workspace: &str) -> StoredEvent {
+        StoredEvent {
+            seq,
+            kind: "session.start_requested".into(),
+            payload: json!({ "session_id": session_id, "workspace": workspace }),
         }
     }
 
@@ -504,6 +542,30 @@ mod tests {
         assert_eq!(summaries[0].turn_count, 1);
         assert_eq!(summaries[0].status, ThreadStatus::Active);
         assert_eq!(summaries[1].id, "s2");
+    }
+
+    #[test]
+    fn start_requested_records_the_workspace_and_leads_the_thread() {
+        let log = vec![
+            start_requested(1, "s1", "/Users/me/projects/foo"),
+            user_turn(2, "s1", "hi"),
+        ];
+        let projection = Projection::rebuild_from(&log);
+
+        // The thread exists from the start event (before its first turn) and
+        // carries the folder it was opened in, on both the detail and summary.
+        let thread = projection.thread("s1").expect("thread exists");
+        assert_eq!(thread.workspace.as_deref(), Some("/Users/me/projects/foo"));
+        let summaries = projection.summaries();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].workspace.as_deref(), Some("/Users/me/projects/foo"));
+    }
+
+    #[test]
+    fn threads_without_a_start_event_have_no_workspace() {
+        let projection = Projection::rebuild_from(&[user_turn(1, "s1", "hi")]);
+        assert_eq!(projection.thread("s1").unwrap().workspace, None);
+        assert_eq!(projection.summaries()[0].workspace, None);
     }
 
     #[test]

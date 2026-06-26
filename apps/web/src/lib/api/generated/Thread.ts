@@ -13,7 +13,14 @@ id: string,
 /**
  * Codex's own session id, learned from `session_started`.
  */
-provider_session_id?: string, status: ThreadStatus, turns: Array<Turn>, 
+provider_session_id?: string, 
+/**
+ * Filesystem path of the workspace/folder this session was opened in,
+ * learned from `session.start_requested`. Lets list views group threads
+ * by folder (PRD FR2). `None` for threads started without an explicit
+ * workspace (the default `OPENER_APPS_DIR`).
+ */
+workspace?: string, status: ThreadStatus, turns: Array<Turn>, 
 /**
  * Global `seq` of the last event applied to this thread.
  */

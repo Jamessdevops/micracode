@@ -4,4 +4,9 @@ import type { ThreadStatus } from "./ThreadStatus";
 /**
  * A lightweight thread row for list views (no turn bodies).
  */
-export type ThreadSummary = { id: string, provider_session_id?: string, status: ThreadStatus, turn_count: number, last_seq: number, };
+export type ThreadSummary = { id: string, provider_session_id?: string, 
+/**
+ * Workspace/folder path this thread was opened in; lets the list group by
+ * folder. `None` when started without an explicit workspace.
+ */
+workspace?: string, status: ThreadStatus, turn_count: number, last_seq: number, };
