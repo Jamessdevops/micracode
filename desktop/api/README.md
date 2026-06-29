@@ -47,8 +47,9 @@ provider slice over HTTP/SSE:
 | POST   | `/v1/sessions/{id}/turn` | send a user turn |
 | POST   | `/v1/sessions/{id}/interrupt` | interrupt the running turn |
 | DELETE | `/v1/sessions/{id}` | stop and reap the session |
-| GET    | `/v1/threads` | **read model**: thread summaries folded from the log |
+| GET    | `/v1/threads` | **read model**: thread summaries folded from the log (each carries its `workspace` folder) |
 | GET    | `/v1/threads/{id}` | **read model**: full thread (turns + messages) |
+| POST   | `/v1/fs/pick` | pop the **native** OS folder dialog (macOS `choose folder`) and return the chosen absolute path, for the UI's folder picker |
 
 The `/v1/threads` endpoints serve a [`Projection`](../../apps/desktop/tauri/crates/core-projection)
 folded from the event log (threads → turns → messages, PRD FR2). It is rebuilt

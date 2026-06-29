@@ -2,6 +2,7 @@
 //! is mounted under the `/v1` prefix by `main.rs`.
 
 pub mod commands;
+pub mod fs;
 pub mod health;
 pub mod models;
 pub mod preview;
@@ -48,6 +49,7 @@ pub fn api_router(state: AppState) -> Router {
         .merge(models::router())
         .merge(projects::router())
         .merge(commands::router())
+        .merge(fs::router())
         .merge(sessions::router())
         .merge(threads::router())
         .merge(receipts::router())
