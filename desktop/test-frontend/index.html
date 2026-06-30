@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Micracode</title>
+<style>
+  :root {
+    --bg: #ffffff;            /* white canvas             */
+    --sidebar: #f6f6f6;       /* slightly deeper sidebar  */
+    --sidebar-hover: #ededed;
+    --sidebar-active: #e4e4e4;
+    --surface: #ffffff;
+    --border: #e7e7e7;
+    --border-strong: #d6d6d6;
+    --text: #1a1a1a;
+    --text-soft: #565656;
+    --text-faint: #8c8c8c;
+    --accent: #1a1a1a;        /* black accent             */
+    --accent-hover: #000000;
+    --on-accent: #ffffff;     /* foreground on accent fills */
+    --ring: rgba(0,0,0,.14);
+    --user-bubble: #f0f0f0;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 6px 24px rgba(0,0,0,.06);
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #181818; --sidebar: #141414; --sidebar-hover: #242424; --sidebar-active: #2e2e2e;
+      --surface: #1f1f1f; --border: #2e2e2e; --border-strong: #3b3b3b;
+      --text: #f1f1f1; --text-soft: #b6b6b6; --text-faint: #888888;
+      --accent: #f4f4f4;        /* white accent             */
+      --accent-hover: #ffffff;
+      --on-accent: #161616;     /* dark foreground on white fills */
+      --ring: rgba(255,255,255,.16);
+      --user-bubble: #2a2a2a; --shadow: 0 1px 3px rgba(0,0,0,.4), 0 6px 24px rgba(0,0,0,.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 15px; line-height: 1.6; display: flex; height: 100vh; overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  #root { display: flex; width: 100%; height: 100vh; }
+
+  /* ───────────── Sidebar ───────────── */
+  .sidebar {
+    width: 264px; flex: 0 0 264px; background: var(--sidebar); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 10px; gap: 4px; position: relative;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 8px 8px 12px; }
+  .brand .logo {
+    width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center; font-weight: 700; font-size: 15px; flex: 0 0 auto;
+  }
+  .brand .name { font-weight: 600; font-size: 15px; letter-spacing: -.01em; }
+  .new-chat {
+    display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 11px; border-radius: 9px;
+    background: transparent; border: none; color: var(--accent); font: inherit; font-weight: 560;
+    cursor: pointer; text-align: left;
+  }
+  .new-chat:hover { background: var(--sidebar-hover); }
+  .new-chat svg { width: 17px; height: 17px; }
+  .section-label { font-size: 12px; color: var(--text-faint); padding: 14px 11px 6px; font-weight: 560; }
+
+  .chats { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+
+  /* one folder bucket: a header row + its chats */
+  .folder-group { margin-bottom: 2px; }
+  .folder-head {
+    display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px; cursor: pointer;
+    color: var(--text-faint); font-size: 12px; font-weight: 600; letter-spacing: .01em;
+  }
+  .folder-head:hover { background: var(--sidebar-hover); color: var(--text-soft); }
+  .folder-head .twist { width: 12px; height: 12px; flex: 0 0 auto; transition: transform .12s ease; }
+  .folder-group.collapsed .folder-head .twist { transform: rotate(-90deg); }
+  .folder-head .ico { width: 13px; height: 13px; flex: 0 0 auto; }
+  .folder-head .ftitle { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; }
+  .folder-head .fcount { flex: 0 0 auto; font-weight: 500; opacity: .8; }
+  .folder-chats { list-style: none; margin: 0 0 2px; padding: 0; }
+  .folder-group.collapsed .folder-chats { display: none; }
+
+  .chats li.chat {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px 7px 22px; border-radius: 9px;
+    cursor: pointer; color: var(--text-soft); font-size: 14px;
+  }
+  .chats li.chat:hover { background: var(--sidebar-hover); color: var(--text); }
+  .chats li.chat.active { background: var(--sidebar-active); color: var(--text); }
+  .chats li.chat .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chats li.chat .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+  .chats li.chat .dot.closed { background: var(--text-faint); }
+  .chats .empty { color: var(--text-faint); font-size: 13px; padding: 8px 11px; cursor: default; }
+
+  .sidebar-foot { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; }
+  .conn { display: flex; align-items: center; gap: 8px; padding: 7px 11px; font-size: 12.5px; color: var(--text-faint); }
+  .conn .led { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
+  .conn .led.ok { background: var(--text); } /* solid = online */
+  .conn .led.bad { background: transparent; box-shadow: inset 0 0 0 2px var(--text-faint); } /* hollow = offline */
+  .gear { margin-left: auto; background: none; border: none; cursor: pointer; color: var(--text-faint); padding: 4px; border-radius: 6px; }
+  .gear:hover { background: var(--sidebar-hover); color: var(--text); }
+
+  /* ───────────── Main ───────────── */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .topbar {
+    height: 52px; flex: 0 0 52px; display: flex; align-items: center; gap: 10px; padding: 0 20px;
+    border-bottom: 1px solid transparent;
+  }
+  .model-pick {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 9px;
+    background: transparent; border: 1px solid transparent; color: var(--text-soft); cursor: pointer;
+    font: inherit; font-weight: 560; font-size: 14px;
+  }
+  .model-pick:hover { background: var(--sidebar-hover); }
+  .model-pick .chev { color: var(--text-faint); }
+  .topbar .spacer { flex: 1; }
+
+  .scroll { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
+  .thread { max-width: 740px; margin: 0 auto; padding: 24px 24px 160px; }
+
+  /* greeting / empty state */
+  .greeting { height: calc(100vh - 52px - 150px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+  .greeting .star { width: 38px; height: 38px; color: var(--accent); }
+  .greeting h1 { font-family: var(--serif); font-weight: 500; font-size: 30px; letter-spacing: -.01em; margin: 6px 0 0; color: var(--text); }
+  .greeting p { color: var(--text-faint); margin: 0; font-size: 14px; }
+
+  /* messages */
+  .msg { margin: 22px 0; }
+  .msg.user { display: flex; justify-content: flex-end; }
+  .msg.user .bubble {
+    background: var(--user-bubble); border-radius: 16px; padding: 11px 16px; max-width: 80%;
+    white-space: pre-wrap; word-wrap: break-word;
+  }
+  .msg.assistant .who { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; color: var(--text-faint); font-size: 13px; }
+  .msg.assistant .av { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+  .msg.assistant .text { font-family: var(--serif); font-size: 16.5px; line-height: 1.7; white-space: pre-wrap; word-wrap: break-word; }
+  .tool {
+    margin: 10px 0; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); overflow: hidden;
+  }
+  .tool .head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-soft); cursor: pointer; }
+  .tool .head .tname { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+  .tool .head .badge { margin-left: auto; font-size: 11px; color: var(--text-faint); }
+  .tool .head .badge.err { color: var(--accent); }
+  .tool pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--border); background: transparent; font-family: var(--mono); font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; color: var(--text-soft); }
+  .tool.collapsed pre { display: none; }
+  .typing { display: inline-flex; gap: 4px; padding: 4px 0; }
+  .typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); animation: blink 1.2s infinite both; }
+  .typing span:nth-child(2) { animation-delay: .2s; } .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%,80%,100% { opacity: .25; } 40% { opacity: 1; } }
+
+  /* ───────────── Composer ───────────── */
+  .composer-wrap { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; padding: 0 24px 22px;
+    background: linear-gradient(to top, var(--bg) 55%, transparent); pointer-events: none; }
+  .composer { width: 100%; max-width: 740px; pointer-events: auto; position: relative; }
+  .perm-menu { position: absolute; bottom: 58px; left: 12px; background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 12px; box-shadow: var(--shadow); padding: 6px; min-width: 256px; z-index: 30; display: none; }
+  .perm-menu.open { display: block; }
+  .perm-menu .item { padding: 9px 11px; border-radius: 8px; cursor: pointer; display: flex; align-items: flex-start; gap: 9px; }
+  .perm-menu .item:hover { background: var(--sidebar-hover); }
+  .perm-menu .item .lab { font-size: 13.5px; }
+  .perm-menu .item .sub { color: var(--text-faint); font-size: 12px; margin-top: 1px; }
+  .perm-menu .item .check { margin-left: auto; color: var(--accent); opacity: 0; }
+  .perm-menu .item.sel .check { opacity: 1; }
+  .pill-btn.danger { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .box {
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 22px;
+    box-shadow: var(--shadow); padding: 10px 10px 8px 16px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .box:focus-within { border-color: var(--border-strong); box-shadow: var(--shadow), 0 0 0 3px var(--ring); }
+  .box textarea {
+    border: none; outline: none; resize: none; background: transparent; color: var(--text);
+    font: inherit; font-size: 15.5px; line-height: 1.55; max-height: 200px; padding: 4px 0; width: 100%;
+  }
+  .box textarea::placeholder { color: var(--text-faint); }
+  .box .toolrow { display: flex; align-items: center; gap: 8px; }
+  .pill-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 9px;
+    border: 1px solid var(--border); background: transparent; color: var(--text-soft); cursor: pointer; font: inherit; font-size: 13px;
+  }
+  .pill-btn:hover { background: var(--sidebar-hover); }
+  .toolrow .spacer { flex: 1; }
+  .send {
+    width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center; cursor: pointer; flex: 0 0 auto;
+  }
+  .send:hover { background: var(--accent-hover); }
+  .send:disabled { background: var(--border-strong); cursor: not-allowed; }
+  .send svg { width: 18px; height: 18px; }
+  .hint { text-align: center; color: var(--text-faint); font-size: 11.5px; margin-top: 8px; }
+
+  /* context chips row (sits just above the composer box) */
+  .ctxbar { position: relative; display: flex; align-items: center; gap: 8px; padding: 0 4px 8px; flex-wrap: wrap; }
+  .folder-menu {
+    position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 280px; max-width: 360px; background: var(--surface);
+    border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--shadow);
+    padding: 6px; z-index: 40; display: none; max-height: 320px; overflow-y: auto;
+  }
+  .folder-menu.open { display: block; }
+  .folder-menu .item { padding: 8px 10px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .folder-menu .item:hover { background: var(--sidebar-hover); }
+  .folder-menu .item .ico { width: 14px; height: 14px; flex: 0 0 auto; color: var(--text-faint); }
+  .folder-menu .item .lab { flex: 1; min-width: 0; }
+  .folder-menu .item .lab .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folder-menu .item .lab .pth { color: var(--text-faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folder-menu .item .check { margin-left: auto; color: var(--accent); opacity: 0; }
+  .folder-menu .item.sel .check { opacity: 1; }
+  .folder-menu .add { color: var(--accent); font-weight: 560; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 10px; }
+  .ctx-chip {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 9px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-soft);
+    font: inherit; font-size: 13px; font-weight: 560; cursor: default; white-space: nowrap;
+  }
+  button.ctx-chip { cursor: pointer; }
+  button.ctx-chip:hover { background: var(--sidebar-hover); color: var(--text); }
+  .ctx-chip svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--text-faint); }
+  .ctx-chip .lbl { color: var(--text); overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+  .ctx-sep { width: 1px; height: 16px; background: var(--border-strong); flex: 0 0 auto; margin: 0 1px; }
+  .ctx-icon-btn {
+    display: inline-flex; align-items: center; justify-content: center; padding: 7px; border-radius: 9px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-soft); cursor: pointer; flex: 0 0 auto;
+  }
+  .ctx-icon-btn:hover { background: var(--sidebar-hover); color: var(--text); }
+  .ctx-icon-btn svg { width: 16px; height: 16px; }
+
+  /* settings popover */
+  .pop { position: absolute; bottom: 46px; left: 12px; width: 280px; background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 12px; box-shadow: var(--shadow); padding: 14px; z-index: 20; display: none; }
+  .pop.open { display: block; }
+  .pop label { display: block; font-size: 12px; color: var(--text-faint); margin: 8px 0 4px; }
+  .pop input, .pop select { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+  .pop h3 { margin: 0 0 4px; font-size: 13px; }
+
+  /* dropdown menu (model/harness) */
+  .menu { position: absolute; top: 46px; left: 16px; background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 12px; box-shadow: var(--shadow); padding: 6px; min-width: 220px; z-index: 20; display: none; }
+  .menu.open { display: block; }
+  .menu .item { padding: 9px 11px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 9px; font-size: 14px; }
+  .menu .item:hover { background: var(--sidebar-hover); }
+  .menu .item .sub { color: var(--text-faint); font-size: 12px; }
+  .menu .item .check { margin-left: auto; color: var(--accent); opacity: 0; }
+  .menu .item.sel .check { opacity: 1; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + JSX, transpiled in-browser by Babel standalone. Keeps the test
+       client zero-build: still just this one file served on :3000. -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- App source kept as text/plain so neither the browser nor Babel's
+       auto-runner executes it; the bootstrap below transpiles it with the
+       *classic* JSX runtime (→ React.createElement) and runs it. The automatic
+       runtime would emit `import "react/jsx-runtime"`, illegal in a non-module
+       script. -->
+  <script type="text/plain" id="appSource">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+// ── constants & helpers ───────────────────────────────────────
+const PERM_LABELS = { bypassPermissions: 'Bypass', acceptEdits: 'Accept edits', plan: 'Plan', default: 'Default' };
+const DEFAULT_FOLDER = '(default folder)';
+
+// Last path segment for a tidy label; the default bucket has no path.
+function folderLabel(path) {
+  if (!path) return DEFAULT_FOLDER;
+  const parts = path.replace(/[\/\\]+$/, '').split(/[\/\\]/);
+  return parts[parts.length - 1] || path;
+}
+function turnsContainUser(turns, text) {
+  return turns.some(tn => tn.messages.some(m => m.role === 'user' && m.text === text));
+}
+function spawnHint(harness) {
+  const env = harness === 'claude' ? 'CLAUDE_BIN' : 'CODEX_BIN';
+  return `Couldn't start the “${harness}” session. The ${harness} CLI must be installed and on PATH (or set ${env}). Everything else — the engine, event stream and thread projection — is working.`;
+}
+
+// ── tiny fetch helper ─────────────────────────────────────────
+async function api(base, method, path, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const res = await fetch(base + path, opts);
+  const txt = await res.text();
+  let data; try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
+  if (!res.ok) throw Object.assign(new Error((data && (data.detail || data.message)) || `${res.status}`), { status: res.status, data });
+  return data;
+}
+
+// ── icons ─────────────────────────────────────────────────────
+const FolderIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+);
+const ChevDown = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+);
+const PlusIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+);
+const Twist = () => (
+  <svg className="twist" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+);
+const LaptopIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 20h20"/></svg>
+);
+const BranchIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="7" r="2.5"/><path d="M6 8.5v7M18 9.5a6 6 0 0 1-6 6H8.5"/></svg>
+);
+const WorktreeIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+);
+const FolderPlusIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5h5"/></svg>
+);
+
+function App() {
+  const [baseUrl, setBaseUrl] = useState('http://127.0.0.1:8000');
+  const apiBase = baseUrl.replace(/\/+$/, '');
+
+  const [harness, setHarness] = useState('claude');
+  const [permission, setPermission] = useState('bypassPermissions');
+  // The folder a *new* chat opens in (sent as `workspace` on POST /v1/sessions).
+  // Empty string = let the backend default to OPENER_APPS_DIR. Recents are
+  // grouped by the folder each thread was opened in (thread.workspace).
+  const [activeWorkspace, setActiveWorkspace] = useState('');
+  const [picking, setPicking] = useState(false);
+
+  const [threads, setThreads] = useState([]);
+  const [sessionId, setSessionId] = useState(null);
+  const [thread, setThread] = useState(null);
+  const [collapsedFolders, setCollapsedFolders] = useState(() => new Set());
+
+  const [conn, setConn] = useState({ online: false, text: 'connecting…' });
+  const [sending, setSending] = useState(false);
+  const [pendingAssistant, setPendingAssistant] = useState(false);
+  const [optimisticUser, setOptimisticUser] = useState(null);
+  const [errors, setErrors] = useState([]);
+  const [openMenu, setOpenMenu] = useState(null);   // 'model' | 'perm' | 'folder' | 'settings' | null
+  const [input, setInput] = useState('');
+
+  // Refs read inside async callbacks / the SSE handler (avoid stale closures).
+  const baseRef = useRef(apiBase); baseRef.current = apiBase;
+  const sessionIdRef = useRef(sessionId); sessionIdRef.current = sessionId;
+  const scrollRef = useRef(null);
+  const textareaRef = useRef(null);
+  const chatsTimerRef = useRef(null);
+
+  const call = useCallback((method, path, body) => api(baseRef.current, method, path, body), []);
+
+  // ── derived: bucket threads by folder ───────────────────────
+  const { groups, threadWorkspace } = useMemo(() => {
+    const groups = new Map();   // key (workspace path, '' = default) → threads[]
+    const tw = {};
+    for (const t of threads) {
+      const key = t.workspace || '';
+      tw[t.id] = key;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(t);
+    }
+    return { groups, threadWorkspace: tw };
+  }, [threads]);
+  const twRef = useRef(threadWorkspace); twRef.current = threadWorkspace;
+
+  const knownFolders = useMemo(() => [...groups.keys()].filter(k => k), [groups]);
+  // The active folder floats to the top so a fresh "New chat" is obvious.
+  const orderedKeys = useMemo(() => {
+    const keys = [...groups.keys()];
+    keys.sort((a, b) => (b === activeWorkspace) - (a === activeWorkspace));
+    return keys;
+  }, [groups, activeWorkspace]);
+
+  // ── data loads ──────────────────────────────────────────────
+  const refreshChats = useCallback(async () => {
+    try { setThreads(await call('GET', '/v1/threads')); } catch { /* offline */ }
+  }, [call]);
+  const refreshChatsSoon = useCallback(() => {
+    clearTimeout(chatsTimerRef.current);
+    chatsTimerRef.current = setTimeout(refreshChats, 300);
+  }, [refreshChats]);
+  const loadThread = useCallback(async (id) => {
+    try { const t = await call('GET', `/v1/threads/${id}`); if (id === sessionIdRef.current) setThread(t); }
+    catch { /* thread not folded yet — ignore */ }
+  }, [call]);
+  const ping = useCallback(async () => {
+    try { const h = await call('GET', '/v1/health'); setConn({ online: true, text: `${h.provider} · online` }); }
+    catch { setConn({ online: false, text: 'backend offline' }); }
+  }, [call]);
+
+  const pushError = (msg) => setErrors(prev => [...prev, msg]);
+
+  // ── effects: ping, initial chats, live event stream ─────────
+  useEffect(() => { ping(); const t = setInterval(ping, 8000); return () => clearInterval(t); }, [ping, apiBase]);
+  useEffect(() => { refreshChats(); }, [refreshChats, apiBase]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const es = new EventSource(`${apiBase}/v1/events/stream?cursor=0`);
+    let renderTimer = null;
+    es.onmessage = (m) => {
+      let ev; try { ev = JSON.parse(m.data); } catch { return; }
+      const sid = ev.payload && ev.payload.session_id;
+      if (sid && sid !== sessionId) return;            // not our conversation
+      if (ev.kind && ev.kind.startsWith('provider.')) {
+        if (ev.kind === 'provider.turn_completed' || ev.kind === 'provider.session_closed') setPendingAssistant(false);
+        clearTimeout(renderTimer);
+        renderTimer = setTimeout(() => loadThread(sessionId), 120);
+      }
+      refreshChatsSoon();
+    };
+    es.onerror = () => {};
+    return () => { es.close(); clearTimeout(renderTimer); };
+  }, [sessionId, apiBase, loadThread, refreshChatsSoon]);
+
+  // close any open menu on an outside click
+  useEffect(() => {
+    const onDoc = () => setOpenMenu(null);
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
+  }, []);
+
+  // keep scrolled to the newest message
+  useEffect(() => {
+    const s = scrollRef.current; if (s) s.scrollTop = s.scrollHeight;
+  }, [thread, optimisticUser, pendingAssistant, errors]);
+
+  // ── actions ─────────────────────────────────────────────────
+  function autosize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 200) + 'px'; }
+
+  function newChat() {
+    setSessionId(null); setThread(null); setPendingAssistant(false); setOptimisticUser(null); setErrors([]);
+    if (textareaRef.current) textareaRef.current.focus();
+  }
+
+  function openChat(id) {
+    setSessionId(id); setPendingAssistant(false); setOptimisticUser(null); setErrors([]);
+    // Follow the chat into its folder, so a subsequent "New chat" continues in
+    // the same folder (matching t3 code / Codex desktop behaviour).
+    const ws = twRef.current[id];
+    if (ws !== undefined) setActiveWorkspace(ws);
+    loadThread(id);
+  }
+
+  // native folder picker: the backend (on this machine) pops the real Finder
+  // "Choose Folder" dialog and returns the absolute path the user picks.
+  async function pickFolder() {
+    if (picking) return;
+    setPicking(true);
+    try {
+      const res = await call('POST', '/v1/fs/pick', { start: activeWorkspace || undefined });
+      if (res && res.path) { setActiveWorkspace(res.path); refreshChats(); }
+    } catch (e) {
+      pushError(e.status === 503
+        ? 'The native folder picker is only available when the backend runs on macOS.'
+        : `Couldn't open the folder dialog: ${e.message || e}`);
+    } finally { setPicking(false); }
+  }
+
+  // send a message: lazily start a session, then POST the turn
+  async function sendMessage() {
+    const text = input.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setErrors([]);
+    setOptimisticUser(text);          // optimistic: paint it immediately
+    setPendingAssistant(true);
+    setInput('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+
+    let phase = 'connect';
+    let sid = sessionId;
+    try {
+      if (!sid) {
+        phase = 'start';
+        const body = { harness, permission };
+        if (activeWorkspace) body.workspace = activeWorkspace;
+        const started = await call('POST', '/v1/sessions', body);
+        sid = started.session_id;
+        setSessionId(sid);            // opens the event stream (effect)
+        await refreshChats();
+      }
+      phase = 'turn';
+      await call('POST', `/v1/sessions/${sid}/turn`, { text });
+    } catch (e) {
+      setPendingAssistant(false);
+      if (!e.status) pushError('Could not reach the backend — is micracode-api running on ' + apiBase + '?');
+      // The backend scrubs 500 bodies, but a session-start 500 is a CLI spawn
+      // failure in practice, so surface the actionable hint by phase.
+      else if (phase === 'start' && e.status >= 500) pushError(spawnHint(harness));
+      else pushError(`Error ${e.status}: ${e.message}`);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function toggleFolder(key) {
+    setCollapsedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+  const toggleMenu = (name) => (e) => { e.stopPropagation(); setOpenMenu(m => m === name ? null : name); };
+
+  // ── render ──────────────────────────────────────────────────
+  const turns = (thread && thread.turns) || [];
+  const showOptimistic = optimisticUser && !turnsContainUser(turns, optimisticUser);
+  const empty = !turns.length && !showOptimistic;
+
+  return (
+    <React.Fragment>
+      {/* ───────────── Sidebar ───────────── */}
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="logo">M</div>
+          <div className="name">Micracode</div>
+        </div>
+
+        <button className="new-chat" onClick={newChat}>
+          <PlusIcon />
+          New chat
+        </button>
+
+        <div className="section-label">Recents</div>
+        <ul className="chats">
+          {!threads.length ? (
+            <li className="empty">No conversations yet</li>
+          ) : orderedKeys.map(key => {
+            const list = groups.get(key);
+            const collapsed = collapsedFolders.has(key);
+            return (
+              <li key={key || '__default'} className={'folder-group' + (collapsed ? ' collapsed' : '')}>
+                <div className="folder-head" title={key || DEFAULT_FOLDER} onClick={() => toggleFolder(key)}>
+                  <Twist />
+                  <FolderIcon className="ico" />
+                  <span className="ftitle">{folderLabel(key)}</span>
+                  <span className="fcount">{list.length}</span>
+                </div>
+                <ul className="folder-chats">
+                  {list.map(t => (
+                    <li key={t.id} className={'chat' + (t.id === sessionId ? ' active' : '')} onClick={() => openChat(t.id)}>
+                      <span className={'dot' + (t.status === 'closed' ? ' closed' : '')}></span>
+                      <span className="title">{t.provider_session_id || t.id.slice(0, 8)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="sidebar-foot">
+          <div className="conn">
+            <span className={'led ' + (conn.online ? 'ok' : 'bad')}></span>
+            <span>{conn.text}</span>
+            <button className="gear" title="Settings" onClick={toggleMenu('settings')}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+          </div>
+          <div className={'pop' + (openMenu === 'settings' ? ' open' : '')} onClick={(e) => e.stopPropagation()}>
+            <h3>Connection</h3>
+            <label>API base URL</label>
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+            <label>Workspace path (optional)</label>
+            <input value={activeWorkspace} placeholder="defaults to OPENER_APPS_DIR"
+                   onChange={(e) => setActiveWorkspace(e.target.value)} />
+          </div>
+        </div>
+      </aside>
+
+      {/* ───────────── Main ───────────── */}
+      <div className="main">
+        <div className="topbar">
+          <button className="model-pick" onClick={toggleMenu('model')}>
+            <span>{harness === 'claude' ? 'Claude' : 'Codex'}</span>
+            <ChevDown className="chev" />
+          </button>
+          <div className={'menu' + (openMenu === 'model' ? ' open' : '')} onClick={(e) => e.stopPropagation()}>
+            <div className={'item' + (harness === 'claude' ? ' sel' : '')} onClick={() => { setHarness('claude'); setOpenMenu(null); }}>
+              <div><div>Claude Code</div><div className="sub">claude CLI · stream-json</div></div><span className="check">✓</span>
+            </div>
+            <div className={'item' + (harness === 'codex' ? ' sel' : '')} onClick={() => { setHarness('codex'); setOpenMenu(null); }}>
+              <div><div>Codex</div><div className="sub">codex CLI · proto</div></div><span className="check">✓</span>
+            </div>
+          </div>
+          <div className="spacer"></div>
+        </div>
+
+        <div className="scroll" ref={scrollRef}>
+          <div className="thread">
+            {empty && (
+              <div className="greeting">
+                <svg className="star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.4L21 11l-6.6 2.6L12 20l-2.4-6.4L3 11l6.6-2.6z"/></svg>
+                <h1>How can I help you today?</h1>
+                <p>Start a {harness} session and drive the Micracode backend.</p>
+              </div>
+            )}
+            {turns.map((turn, ti) => (
+              <React.Fragment key={ti}>
+                {turn.messages.map((m, mi) => <Message key={mi} m={m} />)}
+                {turn.status === 'running' && pendingAssistant && <Typing />}
+              </React.Fragment>
+            ))}
+            {showOptimistic && (
+              <React.Fragment>
+                <div className="msg user"><div className="bubble">{optimisticUser}</div></div>
+                {pendingAssistant && <Typing />}
+              </React.Fragment>
+            )}
+            {errors.map((msg, i) => (
+              <div className="msg assistant" key={'e' + i}>
+                <div className="who"><span className="av" style={{ background: 'var(--text-faint)' }}>!</span><span>System</span></div>
+                <div className="text" style={{ color: 'var(--text-soft)' }}>{msg}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="composer-wrap">
+          <div className="composer">
+            <div className="ctxbar">
+              <span className="ctx-chip"><LaptopIcon /><span className="lbl">Local</span></span>
+              <button className="ctx-chip" title="Folder new chats open in" onClick={(e) => { e.stopPropagation(); setOpenMenu(m => m === 'folder' ? null : 'folder'); }}>
+                <FolderIcon /><span className="lbl">{folderLabel(activeWorkspace)}</span><ChevDown />
+              </button>
+              <span className="ctx-chip"><BranchIcon /><span className="lbl">main</span></span>
+              <span className="ctx-sep"></span>
+              <span className="ctx-chip"><WorktreeIcon /><span className="lbl">worktree</span></span>
+              <button className="ctx-icon-btn" title="Open folder…" onClick={(e) => { e.stopPropagation(); pickFolder(); }}>
+                <FolderPlusIcon />
+              </button>
+              <div className={'folder-menu' + (openMenu === 'folder' ? ' open' : '')} onClick={(e) => e.stopPropagation()}>
+                {['', ...knownFolders].map(f => (
+                  <div key={f || '__default'} className={'item' + (f === activeWorkspace ? ' sel' : '')}
+                       onClick={() => { setOpenMenu(null); setActiveWorkspace(f); }}>
+                    <FolderIcon className="ico" />
+                    <div className="lab"><div className="nm">{folderLabel(f)}</div>{f && <div className="pth">{f}</div>}</div>
+                    <span className="check">✓</span>
+                  </div>
+                ))}
+                <div className="item add" onClick={() => { setOpenMenu(null); pickFolder(); }}>
+                  <PlusIcon className="ico" />
+                  <div className="lab"><div className="nm">Open folder…</div></div>
+                </div>
+              </div>
+            </div>
+            <div className="box">
+              <textarea ref={textareaRef} rows={1} placeholder="How can I help you today?" value={input}
+                onChange={(e) => { setInput(e.target.value); autosize(e.target); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} />
+              <div className={'perm-menu' + (openMenu === 'perm' ? ' open' : '')} onClick={(e) => e.stopPropagation()}>
+                {[
+                  ['bypassPermissions', 'Bypass permissions', <span>Fully autonomous · <code>--dangerously-skip-permissions</code></span>],
+                  ['acceptEdits', 'Accept edits', 'Auto-accept file edits in the workspace'],
+                  ['plan', 'Plan', 'Read & propose only — no file changes'],
+                  ['default', 'Default', 'Standard prompting (restricted when headless)'],
+                ].map(([val, lab, sub]) => (
+                  <div key={val} className={'item' + (permission === val ? ' sel' : '')} onClick={() => { setPermission(val); setOpenMenu(null); }}>
+                    <div><div className="lab">{lab}</div><div className="sub">{sub}</div></div><span className="check">✓</span>
+                  </div>
+                ))}
+              </div>
+              <div className="toolrow">
+                <button className="pill-btn" onClick={toggleMenu('model')}>
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }}></span>
+                  <span>{harness}</span>
+                </button>
+                <button className={'pill-btn' + (permission === 'bypassPermissions' ? ' danger' : '')} title="Permission mode" onClick={toggleMenu('perm')}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg>
+                  <span>{PERM_LABELS[permission] || permission}</span>
+                </button>
+                <div className="spacer"></div>
+                <button className="send" title="Send" disabled={sending} onClick={sendMessage}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                </button>
+              </div>
+            </div>
+            <div className="hint">Micracode test client · turns stream over <code>/v1/events/stream</code></div>
+          </div>
+        </div>
+      </div>
+    </React.Fragment>
+  );
+}
+
+// ── message renderers ─────────────────────────────────────────
+function Message({ m }) {
+  if (m.role === 'user') return <div className="msg user"><div className="bubble">{m.text}</div></div>;
+  if (m.role === 'assistant') return (
+    <div className="msg assistant">
+      <div className="who"><span className="av">M</span><span>Micracode</span></div>
+      <div className="text">{m.text}</div>
+    </div>
+  );
+  if (m.role === 'tool') return <ToolCard m={m} />;
+  return null;
+}
+
+function ToolCard({ m }) {
+  const [collapsed, setCollapsed] = useState(true);
+  return (
+    <div className={'tool' + (collapsed ? ' collapsed' : '')}>
+      <div className="head" onClick={() => setCollapsed(c => !c)}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-1.4-1.4 2.3-2.3z"/></svg>
+        <span className="tname">{m.name}</span>
+        <span className={'badge' + (m.is_error ? ' err' : '')}>{m.is_error ? 'error' : 'tool'}</span>
+      </div>
+      <pre>{JSON.stringify(m.input, null, 2)}</pre>
+      {m.result != null && <pre>{m.result}</pre>}
+    </div>
+  );
+}
+
+function Typing() {
+  return (
+    <div className="msg assistant">
+      <div className="who"><span className="av">M</span><span>Micracode</span></div>
+      <div className="typing"><span></span><span></span><span></span></div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+
+  <script>
+    (function () {
+      var src = document.getElementById('appSource').textContent;
+      var code = Babel.transform(src, { presets: [['react', { runtime: 'classic' }]] }).code;
+      (0, eval)(code);
+    })();
+  </script>
+</body>
+</html>
