@@ -5,6 +5,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Topbar } from "@/components/Topbar";
 import { ChatView } from "@/components/ChatView";
 import { Composer } from "@/components/Composer";
+import { ScrollProgress } from "@/components/ui/scroll-progress";
+import { DEMO_TURNS } from "@/lib/demo";
 import {
   api,
   DEFAULT_API_BASE,
@@ -61,6 +63,9 @@ export function MicracodeClient() {
   const [errors, setErrors] = useState<string[]>([]);
   const [openMenu, setOpenMenu] = useState<MenuName>(null);
   const [input, setInput] = useState("");
+  // Dummy long chat for manual scroll testing: open the page with `?demo`.
+  // Set after mount (never during render) so SSR and client hydrate identically.
+  const [demoActive, setDemoActive] = useState(false);
 
   // Refs read inside async callbacks / the SSE handler (avoid stale closures).
   const baseRef = useRef(apiBase);
@@ -76,6 +81,10 @@ export function MicracodeClient() {
       api<T>(baseRef.current, method, path, body),
     [],
   );
+
+  useEffect(() => {
+    setDemoActive(new URLSearchParams(window.location.search).has("demo"));
+  }, []);
 
   // ── derived: bucket threads by folder ───────────────────────
   const { groups, threadWorkspace } = useMemo(() => {
@@ -309,10 +318,12 @@ export function MicracodeClient() {
   };
 
   // ── render ──────────────────────────────────────────────────
-  const turns = thread?.turns ?? [];
+  const realTurns = thread?.turns ?? [];
   const showOptimistic = Boolean(
-    optimisticUser && !turnsContainUser(turns, optimisticUser),
+    optimisticUser && !turnsContainUser(realTurns, optimisticUser),
   );
+  const turns =
+    demoActive && !realTurns.length && !showOptimistic ? DEMO_TURNS : realTurns;
   const empty = !turns.length && !showOptimistic;
 
   return (
@@ -355,6 +366,11 @@ export function MicracodeClient() {
           optimisticUser={optimisticUser}
           pendingAssistant={pendingAssistant}
           errors={errors}
+        />
+
+        <ScrollProgress
+          containerRef={scrollRef}
+          className="absolute inset-x-0 top-[52px] z-20 h-0.5"
         />
 
         <Composer
