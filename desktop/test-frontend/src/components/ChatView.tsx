@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { FlipWords } from "@/components/ui/flip-words";
 import type { Message as Msg, Turn } from "@/lib/types";
 
 interface ChatViewProps {
@@ -38,7 +39,12 @@ export function ChatView({
               <path d="M12 2l2.4 6.4L21 11l-6.6 2.6L12 20l-2.4-6.4L3 11l6.6-2.6z" />
             </svg>
             <h1 className="mt-1.5 font-serif text-[30px] font-medium tracking-[-0.01em] text-ink">
-              How can I help you today?
+              How can I{" "}
+              <FlipWords
+                words={["help", "assist", "support", "guide"]}
+                className="text-accent"
+              />
+              you today?
             </h1>
             <p className="text-sm text-ink-faint">
               Start a {harness} session and drive the Micracode backend.

@@ -8,6 +8,7 @@ import {
   IconSettings,
 } from "@tabler/icons-react";
 import { Sidebar, SidebarBody, useSidebar } from "@/components/ui/sidebar";
+import { RainbowButton } from "@/components/ui/rainbow-button";
 import { cn } from "@/lib/utils";
 import { folderLabel, DEFAULT_FOLDER } from "@/lib/api";
 import type { ConnState, Thread } from "@/lib/types";
@@ -95,13 +96,13 @@ function SidebarContent({
       </div>
 
       {/* new chat */}
-      <button
+      <RainbowButton
         onClick={onNewChat}
-        className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left font-semibold text-accent hover:bg-sidebar-hover"
+        className="h-10 w-full justify-start gap-2.5 rounded-[9px] px-2.5 font-semibold"
       >
         <IconPlus className="h-[18px] w-[18px] shrink-0" />
         <Label>New chat</Label>
-      </button>
+      </RainbowButton>
 
       <Label className="px-2.5 pb-1.5 pt-3.5 text-xs font-semibold text-ink-faint">
         Recents

@@ -27,6 +27,15 @@
     Arial, sans-serif;
   --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* magicui rainbow-button gradient stops (from the registry component; the
+     component references these as bare `var(--color-N)`, and they're identical
+     in light/dark, so no theme override is needed). */
+  --color-1: oklch(66.2% 0.225 25.9);
+  --color-2: oklch(60.4% 0.26 302);
+  --color-3: oklch(69.6% 0.165 251);
+  --color-4: oklch(80.2% 0.134 225);
+  --color-5: oklch(90.7% 0.231 133);
 }
 
 @media (prefers-color-scheme: dark) {

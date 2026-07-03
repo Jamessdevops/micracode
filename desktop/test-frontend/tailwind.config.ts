@@ -49,9 +49,14 @@ const config: Config = {
           "0%,80%,100%": { opacity: "0.25" },
           "40%": { opacity: "1" },
         },
+        rainbow: {
+          "0%": { "background-position": "0%" },
+          "100%": { "background-position": "200%" },
+        },
       },
       animation: {
         blink: "blink 1.2s infinite both",
+        rainbow: "rainbow var(--speed, 2s) infinite linear",
       },
     },
   },
