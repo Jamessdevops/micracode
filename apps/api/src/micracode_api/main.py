@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .deps import get_engine
-from .routers import generate, health, models, projects
+from .routers import generate, health, models, projects, settings as settings_router
 
 logging.basicConfig(
     level=settings.log_level.upper(),
@@ -47,6 +47,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router, prefix="/v1", tags=["health"])
     app.include_router(models.router, prefix="/v1", tags=["models"])
+    app.include_router(settings_router.router, prefix="/v1", tags=["settings"])
     app.include_router(projects.router, prefix="/v1", tags=["projects"])
     app.include_router(generate.router, prefix="/v1", tags=["generate"])
 

@@ -6,6 +6,7 @@
 
 import { serve } from "@hono/node-server";
 
+import { readAuth } from "./auth.js";
 import { EventLog } from "./eventlog.js";
 import { createApp } from "./server.js";
 import { SessionManager } from "./sessions.js";
@@ -30,7 +31,10 @@ export interface CoreServer {
 }
 
 export function startCoreServer(opts: StartOptions = {}): Promise<CoreServer> {
-  if (opts.apiKeys) Object.assign(process.env, opts.apiKeys);
+  // Persisted keys (the shared auth file) are the source of truth; opts.apiKeys
+  // is a legacy fallback (the Electron userData store) applied first so the
+  // file wins for any key it defines.
+  Object.assign(process.env, opts.apiKeys ?? {}, readAuth());
 
   const storage = new Storage(opts.dataRoot);
   storage.ensureRoot();

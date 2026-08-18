@@ -13,6 +13,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 
+import { writeAuth } from "./auth.js";
 import { EventLog } from "./eventlog.js";
 import { SessionManager, type StartSessionBody } from "./sessions.js";
 import { Storage } from "./storage.js";
@@ -68,6 +69,25 @@ export function createApp(deps: CoreDeps): Hono {
       default: { provider: "openai", model: "gpt-5" },
     }),
   );
+
+  // --- settings -------------------------------------------------------------
+  // Read/persist user API keys in the shared dedicated auth file. OpenAI only
+  // for now, matching the web client's SettingsView shape.
+  const mask = (k: string) => (k ? (k.length > 4 ? `…${k.slice(-4)}` : "…") : null);
+  const settingsView = () => {
+    const key = process.env.OPENAI_API_KEY ?? "";
+    return { openai: { configured: Boolean(key), hint: mask(key) } };
+  };
+
+  v1.get("/settings", (c) => c.json(settingsView()));
+
+  v1.post("/settings", async (c) => {
+    const body = await c.req.json<{ openai_api_key?: string }>();
+    const key = (body?.openai_api_key ?? "").trim();
+    writeAuth("OPENAI_API_KEY", key); // persist to the shared file
+    process.env.OPENAI_API_KEY = key; // live effect for the running core
+    return c.json(settingsView());
+  });
 
   // --- projects -------------------------------------------------------------
   v1.get("/projects", (c) => c.json(storage.listProjects()));

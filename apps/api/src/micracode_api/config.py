@@ -9,6 +9,7 @@ Values are read from (in order of precedence):
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from pydantic import Field
 from pydantic_settings import SettingsConfigDict
 
 from micracode_core.config import CoreConfig
+
+from .authfile import read_auth
 
 _API_DIR = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _API_DIR.parent.parent
@@ -48,6 +51,10 @@ class Settings(CoreConfig):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    # Feed the shared auth file into env; an explicit process env still wins,
+    # so precedence is: process env > auth file > .env.
+    for name, value in read_auth().items():
+        os.environ.setdefault(name, value)
     return Settings()
 
 
