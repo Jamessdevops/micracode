@@ -5,6 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "bun --filter @micracode/core build && tsc && electron dist/main.js --no-sandbox",
+    "dev:watch": "bun --filter @micracode/core build && tsc && (tsc -w & electronmon dist/main.js --no-sandbox)",
     "build": "bun --filter @micracode/core build && tsc && electron-builder",
     "typecheck": "tsc --noEmit"
   },
@@ -15,6 +16,7 @@
     "@types/node": "^22.0.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
+    "electronmon": "^2.0.4",
     "typescript": "^5.6.3"
   }
 }
