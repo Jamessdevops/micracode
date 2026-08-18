@@ -11,6 +11,11 @@ app = typer.Typer(
 )
 
 
+@app.callback()
+def _main() -> None:
+    """Keep ``web`` a subcommand — Typer collapses single-command apps."""
+
+
 @app.command()
 def web(
     host: str = typer.Option("127.0.0.1", help="Bind host."),

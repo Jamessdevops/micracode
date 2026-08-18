@@ -61,7 +61,7 @@ function baseUrl(opts?: ApiClientOptions): string {
   return opts?.baseUrl ?? env.API_BASE_URL;
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   init: RequestInit & { next?: { revalidate?: number | false; tags?: string[] } },
   opts?: ApiClientOptions,

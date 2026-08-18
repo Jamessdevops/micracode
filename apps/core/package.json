@@ -1,0 +1,31 @@
+{
+  "name": "@micracode/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript core backend for the Micracode desktop app, powered by the pi coding agent SDK. Runs in-process in the Electron main.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "node --experimental-strip-types src/dev.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'core: no lint'",
+    "format": "prettier --check src"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.3"
+  }
+}

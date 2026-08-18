@@ -4,11 +4,13 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "dev": "tsc && electron dist/main.js --no-sandbox",
-    "build": "tsc && electron-builder",
+    "dev": "bun --filter @micracode/core build && tsc && electron dist/main.js --no-sandbox",
+    "build": "bun --filter @micracode/core build && tsc && electron-builder",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@micracode/core": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "electron": "^33.0.0",

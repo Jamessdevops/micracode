@@ -12,8 +12,8 @@
     "format": "prettier --check ."
   },
   "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
     "@micracode/shared": "workspace:*",
+    "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-slot": "^1.1.0",
     "@webcontainer/api": "^1.6.4",
     "class-variance-authority": "^0.7.0",
@@ -23,6 +23,7 @@
     "next": "15.5.18",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-grab": "^0.2.0",
     "react-resizable-panels": "^2.1.6",
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7",

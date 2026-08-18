@@ -9,6 +9,7 @@ import {
 import { execSync, spawn, ChildProcess } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
+import type { CoreServer } from "@micracode/core";
 
 // ---------------------------------------------------------------------------
 // Simple JSON file store (replaces electron-store to avoid ESM issues)
@@ -45,7 +46,9 @@ function writeStore(data: Partial<StoreData>): void {
 // State
 // ---------------------------------------------------------------------------
 
-let backendProcess: ChildProcess | null = null;
+// The core backend (@micracode/core) runs in-process, inside this main
+// process — not as a spawned child like the old Python binary.
+let coreServer: CoreServer | null = null;
 let backendPort = DEFAULT_STORE.backendPort;
 let mainWindow: BrowserWindow | null = null;
 
@@ -64,15 +67,6 @@ function getWebDistPath(): string {
   return path.join(__dirname, "..", "..", "..", "apps", "web", "out");
 }
 
-function getBackendBinaryPath(): string {
-  if (app.isPackaged) {
-    const ext = process.platform === "win32" ? ".exe" : "";
-    return path.join(process.resourcesPath, "backend", `micracode-api${ext}`);
-  }
-  // Dev: fall back to running via uv from the monorepo root
-  return "";
-}
-
 // ---------------------------------------------------------------------------
 // Custom app:// protocol — serves Next.js static export
 // ---------------------------------------------------------------------------
@@ -85,92 +79,32 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // ---------------------------------------------------------------------------
-// Free port discovery
+// Core backend lifecycle (in-process)
 // ---------------------------------------------------------------------------
 
-function findFreePort(start: number): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const { createServer } = require("net") as typeof import("net");
-    const server = createServer();
-    server.listen(start, "127.0.0.1", () => {
-      const addr = server.address() as { port: number };
-      server.close(() => resolve(addr.port));
-    });
-    server.on("error", () => {
-      // Port taken — try next
-      findFreePort(start + 1).then(resolve, reject);
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Backend lifecycle
-// ---------------------------------------------------------------------------
-
-async function waitForBackend(port: number, maxMs = 15_000): Promise<void> {
-  const deadline = Date.now() + maxMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/health`);
-      if (res.ok) return;
-    } catch {
-      // not ready yet
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error(`Backend did not start within ${maxMs}ms`);
-}
+// @micracode/core is ESM; this file compiles to CommonJS. A plain `import()`
+// would be transpiled to `require()` and fail on the ESM package, so load it
+// through a Function to keep a real runtime dynamic import.
+const importCore = new Function("s", "return import(s)") as (
+  s: string
+) => Promise<typeof import("@micracode/core")>;
 
 async function startBackend(): Promise<void> {
-  backendPort = await findFreePort(49152);
-  writeStore({ backendPort });
-
   const apiKeys = readStore().apiKeys;
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...apiKeys,
-  };
-
-  const binaryPath = getBackendBinaryPath();
-
-  if (binaryPath && fs.existsSync(binaryPath)) {
-    // Packaged: spawn the PyInstaller binary
-    backendProcess = spawn(
-      binaryPath,
-      ["web", "--host", "127.0.0.1", "--port", String(backendPort)],
-      { env, stdio: "pipe" }
-    );
-  } else {
-    // Dev: run via uv from the monorepo root
-    const monorepoRoot = path.join(__dirname, "..", "..", "..", "..");
-    backendProcess = spawn(
-      "uv",
-      [
-        "run",
-        "--directory",
-        monorepoRoot,
-        "micracode",
-        "web",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        String(backendPort),
-      ],
-      { env, stdio: "pipe", cwd: monorepoRoot }
-    );
-  }
-
-  backendProcess.on("error", (err) => {
-    console.error("[backend] spawn error:", err);
+  const { startCoreServer } = await importCore("@micracode/core");
+  coreServer = await startCoreServer({
+    host: "127.0.0.1",
+    port: 0, // pick a free port; read the real one back below
+    apiKeys,
   });
-
-  await waitForBackend(backendPort);
+  backendPort = coreServer.port;
+  writeStore({ backendPort });
 }
 
-function stopBackend(): void {
-  if (backendProcess) {
-    backendProcess.kill();
-    backendProcess = null;
+async function stopBackend(): Promise<void> {
+  if (coreServer) {
+    await coreServer.close();
+    coreServer = null;
   }
 }
 
@@ -254,6 +188,33 @@ function stopAllDevServers(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Renderer source
+// ---------------------------------------------------------------------------
+
+// In development we load the running Next.js dev server, so the renderer is a
+// React *development* build. react-grab (and any tool that reads dev-only fiber
+// info via the React DevTools hook) only works against a dev build — the
+// packaged app's static export is a production build where that info is gone.
+const DEV_SERVER_URL = process.env.MICRACODE_DEV_URL ?? "http://localhost:3000";
+
+// The URL the window loads. Set to the dev server in development (once it's up),
+// otherwise the static export served over app://.
+let rendererUrl = "app://./index.html";
+
+async function waitForDevServer(url: string, maxMs = 30_000): Promise<boolean> {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    try {
+      if ((await fetch(url)).ok) return true;
+    } catch {
+      // dev server not up yet
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Main window
 // ---------------------------------------------------------------------------
 
@@ -266,12 +227,17 @@ function createWindow(): void {
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      additionalArguments: [
+        `--backend-port=${backendPort}`,
+        ...(app.isPackaged ? [] : ["--micracode-dev=1"]),
+      ],
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
 
-  mainWindow.loadURL("app://./index.html");
+  mainWindow.loadURL(rendererUrl);
+  if (!app.isPackaged) mainWindow.webContents.openDevTools({ mode: "detach" });
 
   // Open external links in the system browser, not Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -305,6 +271,20 @@ app.whenReady().then(async () => {
   });
 
   await startBackend();
+
+  // Development: load the Next.js dev server (React dev build → react-grab works).
+  // Falls back to the static export if the dev server isn't running.
+  if (!app.isPackaged) {
+    if (await waitForDevServer(DEV_SERVER_URL)) {
+      rendererUrl = DEV_SERVER_URL;
+    } else {
+      console.warn(
+        `[dev] ${DEV_SERVER_URL} not reachable — is 'next dev' running? ` +
+          `Loading the static export instead (react-grab won't activate there).`,
+      );
+    }
+  }
+
   createWindow();
 
   app.on("activate", () => {
@@ -318,7 +298,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   stopAllDevServers();
-  stopBackend();
+  void stopBackend();
 });
 
 // ---------------------------------------------------------------------------
@@ -337,7 +317,7 @@ ipcMain.handle("save-api-keys", (_event, keys: Record<string, string>) => {
   writeStore({ apiKeys: keys });
   // Restart backend so the new keys take effect immediately
   const restart = async () => {
-    stopBackend();
+    await stopBackend();
     await startBackend();
   };
   void restart();

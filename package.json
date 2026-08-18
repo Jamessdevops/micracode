@@ -6,6 +6,7 @@
   "workspaces": [
     "apps/web",
     "apps/desktop",
+    "apps/core",
     "desktop/test-frontend",
     "packages/*"
   ],
@@ -19,6 +20,9 @@
     "dev:web": "bun --filter web dev",
     "dev:client": "bun --filter test-frontend dev",
     "dev:api": "uv run --directory apps/api uvicorn micracode_api.main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:core": "bun --filter @micracode/core dev",
+    "desktop": "bun run --parallel dev:web desktop:app",
+    "desktop:app": "bun --filter @micracode/desktop dev",
     "build": "bun --filter web build",
     "start:web": "bun --filter web start",
     "typecheck": "bun --filter '*' typecheck",
