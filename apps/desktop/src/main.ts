@@ -7,6 +7,7 @@ import {
   shell,
 } from "electron";
 import { execSync, spawn, ChildProcess } from "child_process";
+import { createServer as createNetServer } from "net";
 import * as path from "path";
 import * as fs from "fs";
 import type { CoreServer } from "@micracode/core";
@@ -16,11 +17,10 @@ import type { CoreServer } from "@micracode/core";
 // ---------------------------------------------------------------------------
 
 interface StoreData {
-  apiKeys: Record<string, string>;
   backendPort: number;
 }
 
-const DEFAULT_STORE: StoreData = { apiKeys: {}, backendPort: 49152 };
+const DEFAULT_STORE: StoreData = { backendPort: 49152 };
 
 function getStorePath(): string {
   return path.join(app.getPath("userData"), "settings.json");
@@ -90,12 +90,11 @@ const importCore = new Function("s", "return import(s)") as (
 ) => Promise<typeof import("@micracode/core")>;
 
 async function startBackend(): Promise<void> {
-  const apiKeys = readStore().apiKeys;
+  // Keys live in the shared auth.json; core reads it via readAuth() on start.
   const { startCoreServer } = await importCore("@micracode/core");
   coreServer = await startCoreServer({
     host: "127.0.0.1",
     port: 0, // pick a free port; read the real one back below
-    apiKeys,
   });
   backendPort = coreServer.port;
   writeStore({ backendPort });
@@ -112,7 +111,19 @@ async function stopBackend(): Promise<void> {
 // Dev server lifecycle
 // ---------------------------------------------------------------------------
 
-const URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1):\d+/;
+// Ask the OS for an unused TCP port by binding to 0 and reading it back.
+// ponytail: tiny TOCTOU window between close and next's bind; Next won't retry
+// an explicit PORT, so a lost race surfaces as an early non-zero exit below.
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createNetServer();
+    srv.once("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const port = (srv.address() as { port: number }).port;
+      srv.close(() => resolve(port));
+    });
+  });
+}
 
 async function startDevServer(
   projectId: string,
@@ -136,40 +147,44 @@ async function startDevServer(
     // Non-fatal — continue anyway; npm install may have partially succeeded
   }
 
-  // Spawn the dev server
+  // Assign a free, unique port. A pinned port (e.g. 3000) collides with the
+  // platform's own dev server and with other projects, and Next won't retry a
+  // busy port that's set explicitly — so the server would never come up.
+  const port = await getFreePort();
+  const url = `http://localhost:${port}`;
+
+  // Spawn the dev server. The starter's dev script honors PORT (no --port flag).
   const proc = spawn("npm", ["run", "dev"], {
     cwd,
     shell: true,
     stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, PORT: String(port) },
   });
 
   devServers.set(projectId, proc);
 
-  // Detect the URL from stdout/stderr
+  // Wait for the known URL to respond, rather than scraping stdout (whose
+  // format and chunk boundaries are unreliable). Fail fast if the process dies.
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Dev server did not report a URL within 30s"));
-    }, 30_000);
-
-    const onData = (chunk: Buffer) => {
-      const text = chunk.toString();
-      const match = URL_PATTERN.exec(text);
-      if (match) {
-        clearTimeout(timeout);
-        resolve(match[0]);
-      }
-    };
-
-    proc.stdout?.on("data", onData);
-    proc.stderr?.on("data", onData);
+    let settled = false;
 
     proc.on("exit", (code) => {
-      if (code !== 0 && code !== null) {
-        clearTimeout(timeout);
-        devServers.delete(projectId);
-        reject(new Error(`Dev server exited with code ${code}`));
-      }
+      if (settled) return;
+      settled = true;
+      devServers.delete(projectId);
+      reject(new Error(`Dev server exited with code ${code}`));
     });
+
+    void (async () => {
+      const ready = await waitForDevServer(url, 60_000);
+      if (settled) return;
+      settled = true;
+      if (ready) resolve(url);
+      else {
+        stopDevServer(projectId);
+        reject(new Error("Dev server did not become reachable within 60s"));
+      }
+    })();
   });
 }
 
@@ -313,18 +328,17 @@ ipcMain.handle("stop-dev-server", (_event, { projectId }) => {
   stopDevServer(String(projectId));
 });
 
-ipcMain.handle("save-api-keys", (_event, keys: Record<string, string>) => {
-  writeStore({ apiKeys: keys });
+ipcMain.handle("save-api-keys", async (_event, keys: Record<string, string>) => {
+  const { writeAuth } = await importCore("@micracode/core");
+  for (const [name, value] of Object.entries(keys)) writeAuth(name, value);
   // Restart backend so the new keys take effect immediately
-  const restart = async () => {
-    await stopBackend();
-    await startBackend();
-  };
-  void restart();
+  await stopBackend();
+  await startBackend();
 });
 
-ipcMain.handle("get-api-keys", () => {
-  return readStore().apiKeys;
+ipcMain.handle("get-api-keys", async () => {
+  const { readAuth } = await importCore("@micracode/core");
+  return readAuth();
 });
 
 ipcMain.handle("get-backend-port", () => backendPort);

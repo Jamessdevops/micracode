@@ -9,6 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { dataRoot } from "./config.js";
+import { NEXT_STARTER_FILES } from "./starter.js";
 
 // WebContainer-compatible file tree (mirrors @micracode/shared's FileSystemTree;
 // inlined to keep this package free of the shared workspace's build settings).
@@ -95,9 +96,13 @@ export class Storage {
     const rec: ProjectRecord = { id, name, template, created_at: now, updated_at: now };
     fs.mkdirSync(path.join(this.projectDir(id), ".micracode"), { recursive: true });
     fs.writeFileSync(this.metaPath(id), JSON.stringify(rec, null, 2), "utf8");
-    // no starter template scaffolded — the agent writes the first
-    // files. Port packages/core/starter/next_default if an empty project is a
-    // bad first-run experience.
+    // Scaffold the Next.js starter so the preview can `npm run dev` immediately,
+    // before the agent writes anything. Other templates start empty.
+    if (template === "next") {
+      for (const [rel, content] of Object.entries(NEXT_STARTER_FILES)) {
+        this.writeFile(id, rel, content);
+      }
+    }
     return rec;
   }
 

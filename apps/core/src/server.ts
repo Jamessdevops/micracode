@@ -15,6 +15,7 @@ import { streamSSE } from "hono/streaming";
 
 import { writeAuth } from "./auth.js";
 import { EventLog } from "./eventlog.js";
+import { Generator } from "./generate.js";
 import { SessionManager, type StartSessionBody } from "./sessions.js";
 import { Storage } from "./storage.js";
 
@@ -29,6 +30,7 @@ const NOT_IMPLEMENTED = (what: string) => ({ detail: `${what} not implemented ye
 
 export function createApp(deps: CoreDeps): Hono {
   const { storage, log, sessions } = deps;
+  const generator = new Generator(storage);
   const app = new Hono();
 
   app.use(
@@ -141,6 +143,11 @@ export function createApp(deps: CoreDeps): Hono {
   v1.get("/projects/:id/download", (c) => c.json(NOT_IMPLEMENTED("project download"), 501));
   v1.get("/projects/:id/vcs/status", (c) => c.json(NOT_IMPLEMENTED("vcs"), 501));
   v1.get("/projects/:id/checkpoints", (c) => c.json(NOT_IMPLEMENTED("checkpoints"), 501));
+
+  // --- generate -------------------------------------------------------------
+  // The code-generation stream the web chat panels POST to (AI SDK UI Message
+  // Stream Protocol). Bridges a pi coding-agent run to the client's frames.
+  v1.post("/generate", (c) => generator.handle(c));
 
   // --- sessions -------------------------------------------------------------
   v1.post("/sessions", async (c) => {

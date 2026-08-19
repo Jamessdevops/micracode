@@ -60,6 +60,7 @@ export function startCoreServer(opts: StartOptions = {}): Promise<CoreServer> {
   });
 }
 
+export { readAuth, writeAuth } from "./auth.js";
 export { createApp } from "./server.js";
 export { EventLog } from "./eventlog.js";
 export { Storage } from "./storage.js";
