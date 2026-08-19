@@ -2,7 +2,7 @@
  * Persistent API-key store — one dedicated file, shared with the Python
  * backend so a key entered in either place is visible to both.
  *
- *   $XDG_DATA_HOME/micracode/auth.json   (default ~/.local/share/micracode/…)
+ *   ~/.micracode/auth.json
  *
  * Shape: a flat map of env-var name → value, e.g. { "OPENAI_API_KEY": "sk-…" },
  * so loading it is just `Object.assign(process.env, readAuth())`. Dir 0700,
@@ -15,10 +15,10 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export function authFile(): string {
-  const dataHome =
-    process.env.XDG_DATA_HOME?.trim() ||
-    path.join(os.homedir(), ".local", "share");
-  return path.join(dataHome, "micracode", "auth.json");
+  const dir =
+    process.env.MICRACODE_CONFIG_DIR?.trim() ||
+    path.join(os.homedir(), ".micracode");
+  return path.join(dir, "auth.json");
 }
 
 export function readAuth(): Record<string, string> {
@@ -46,7 +46,7 @@ export function writeAuth(name: string, value: string): void {
 // self-check: `bun apps/core/src/auth.ts`
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mc-auth-"));
-  process.env.XDG_DATA_HOME = tmp;
+  process.env.MICRACODE_CONFIG_DIR = tmp;
   console.assert(Object.keys(readAuth()).length === 0, "missing file → {}");
   writeAuth("OPENAI_API_KEY", "sk-test");
   writeAuth("GOOGLE_API_KEY", "g");

@@ -12,7 +12,7 @@ from micracode_api.config import get_settings
 
 
 def test_write_auth_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("MICRACODE_CONFIG_DIR", str(tmp_path))
 
     assert authfile.read_auth() == {}  # missing file → no keys
 
@@ -25,7 +25,7 @@ def test_write_auth_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 def test_post_settings_takes_effect_live(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("MICRACODE_CONFIG_DIR", str(tmp_path))
 
     res = client.post("/v1/settings", json={"openai_api_key": "sk-live-1234"})
     assert res.status_code == 200

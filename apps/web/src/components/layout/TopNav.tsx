@@ -34,7 +34,7 @@ export function TopNav({ projectId, projectName, onPublish }: TopNavProps) {
   const togglePanel = useUiStore((s) => s.togglePanel);
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-zinc-800 bg-black px-3 text-sm text-zinc-50">
+    <header className="flex h-12 shrink-0 items-center justify-between border-zinc-800 bg-black pl-20 pr-3 text-sm text-zinc-50">
       <div className="flex items-center gap-2">
         <Link
           href="/"

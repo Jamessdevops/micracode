@@ -46,7 +46,7 @@ export function HomeSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-[#1b1b1e] bg-[#0e0e11] px-3 py-4 text-white">
+    <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-[#1b1b1e] bg-[#0e0e11] px-3 pb-4 pt-9 text-white">
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
         <input

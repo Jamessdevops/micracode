@@ -1,6 +1,6 @@
 """Shared dedicated API-key file, also read/written by the TS core.
 
-   $XDG_DATA_HOME/micracode/auth.json   (default ~/.local/share/micracode/…)
+   ~/.micracode/auth.json   (override the dir with $MICRACODE_CONFIG_DIR)
 
 Flat JSON map of env-var name → value, e.g. ``{"OPENAI_API_KEY": "sk-…"}`` —
 the names match the env vars the generators read, so the file feeds env
@@ -16,10 +16,10 @@ from pathlib import Path
 
 
 def auth_file() -> Path:
-    data_home = os.environ.get("XDG_DATA_HOME", "").strip() or str(
-        Path.home() / ".local" / "share"
+    base = os.environ.get("MICRACODE_CONFIG_DIR", "").strip() or str(
+        Path.home() / ".micracode"
     )
-    return Path(data_home) / "micracode" / "auth.json"
+    return Path(base) / "auth.json"
 
 
 def read_auth() -> dict[str, str]:
