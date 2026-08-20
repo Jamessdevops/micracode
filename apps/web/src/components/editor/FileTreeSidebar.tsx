@@ -17,7 +17,7 @@ import {
   flattenFileSystemTree,
   useFileSystemStore,
 } from "@/store/fileSystemStore";
-import { useWebContainerStore } from "@/store/webContainerStore";
+import { usePreviewStore } from "@/store/previewStore";
 
 export interface FileTreeSidebarProps {
   projectId: string;
@@ -164,14 +164,10 @@ export function FileTreeSidebar({
   const writtenAt = useFileSystemStore((s) => s.writtenAt);
   const hydratedPaths = useFileSystemStore((s) => s.hydratedPaths);
   const replaceTree = useFileSystemStore((s) => s.replaceTree);
-  const startPreview = useWebContainerStore((s) => s.startPreview);
-  const previewPhase = useWebContainerStore((s) => s.phase);
+  const startPreview = usePreviewStore((s) => s.startPreview);
+  const previewPhase = usePreviewStore((s) => s.phase);
 
-  const isPreviewBooting =
-    previewPhase === "booting" ||
-    previewPhase === "mounting" ||
-    previewPhase === "installing" ||
-    previewPhase === "startingDev";
+  const isPreviewBooting = previewPhase === "starting";
 
   const files = useMemo(() => flattenFileSystemTree(tree), [tree]);
   const roots = useMemo(() => buildTree(files), [files]);
@@ -201,7 +197,7 @@ export function FileTreeSidebar({
     try {
       const { tree: fresh } = await getProjectFiles(projectId);
       replaceTree(fresh);
-      void startPreview();
+      void startPreview(projectId);
     } catch {
       // Non-fatal.
     } finally {

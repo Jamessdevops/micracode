@@ -6,11 +6,12 @@ import {
   protocol,
   shell,
 } from "electron";
-import { execSync, spawn, ChildProcess } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import { createServer as createNetServer } from "net";
 import * as path from "path";
 import * as fs from "fs";
 import type { CoreServer } from "@micracode/core";
+import { startProxy, type DevProxy } from "./proxy";
 
 // ---------------------------------------------------------------------------
 // Simple JSON file store (replaces electron-store to avoid ESM issues)
@@ -54,6 +55,8 @@ let mainWindow: BrowserWindow | null = null;
 
 // Per-project dev server processes: projectId → ChildProcess
 const devServers = new Map<string, ChildProcess>();
+// Per-project reverse proxies sitting in front of each dev server.
+const devProxies = new Map<string, DevProxy>();
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -125,6 +128,23 @@ function getFreePort(): Promise<number> {
   });
 }
 
+// Forward a chunk of dev-server output to the renderer console. Split into
+// lines there; here we just relay raw chunks tagged with their project + source.
+function sendLog(projectId: string, source: "install" | "dev", chunk: string): void {
+  mainWindow?.webContents.send("dev-server-log", { projectId, source, chunk });
+}
+
+// Pipe a child's stdout+stderr to the renderer console. Also drains the pipes —
+// an unread stdout buffer can otherwise fill and stall the child.
+function streamLogs(
+  projectId: string,
+  proc: ChildProcess,
+  source: "install" | "dev"
+): void {
+  proc.stdout?.on("data", (d: Buffer) => sendLog(projectId, source, d.toString()));
+  proc.stderr?.on("data", (d: Buffer) => sendLog(projectId, source, d.toString()));
+}
+
 async function startDevServer(
   projectId: string,
   devScript: string
@@ -140,12 +160,24 @@ async function startDevServer(
   const project = (await resp.json()) as { root_path: string };
   const cwd = project.root_path;
 
-  // Run npm install first (blocking, up to 2 min)
-  try {
-    execSync("npm install --prefer-offline", { cwd, timeout: 120_000, stdio: "pipe" });
-  } catch {
-    // Non-fatal — continue anyway; npm install may have partially succeeded
-  }
+  // Run npm install first, streaming its output to the console. Non-fatal on
+  // failure (install may have partially succeeded); capped at 2 min.
+  await new Promise<void>((resolve) => {
+    const install = spawn("npm", ["install", "--prefer-offline"], {
+      cwd,
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: process.env,
+    });
+    streamLogs(projectId, install, "install");
+    const killer = setTimeout(() => install.kill(), 120_000);
+    const done = () => {
+      clearTimeout(killer);
+      resolve();
+    };
+    install.on("exit", done);
+    install.on("error", done);
+  });
 
   // Assign a free, unique port. A pinned port (e.g. 3000) collides with the
   // platform's own dev server and with other projects, and Next won't retry a
@@ -162,9 +194,13 @@ async function startDevServer(
   });
 
   devServers.set(projectId, proc);
+  streamLogs(projectId, proc, "dev");
 
   // Wait for the known URL to respond, rather than scraping stdout (whose
   // format and chunk boundaries are unreliable). Fail fast if the process dies.
+  // Once reachable, stand up a reverse proxy in front and hand the renderer the
+  // PROXY url — the iframe embeds that, so framing headers set by the generated
+  // app are stripped and the preview always renders.
   return new Promise((resolve, reject) => {
     let settled = false;
 
@@ -172,23 +208,39 @@ async function startDevServer(
       if (settled) return;
       settled = true;
       devServers.delete(projectId);
+      stopDevServer(projectId);
       reject(new Error(`Dev server exited with code ${code}`));
     });
 
     void (async () => {
       const ready = await waitForDevServer(url, 60_000);
       if (settled) return;
-      settled = true;
-      if (ready) resolve(url);
-      else {
+      if (!ready) {
+        settled = true;
         stopDevServer(projectId);
         reject(new Error("Dev server did not become reachable within 60s"));
+        return;
+      }
+      try {
+        const proxy = await startProxy({ host: "127.0.0.1", port });
+        devProxies.set(projectId, proxy);
+        settled = true;
+        resolve(`http://localhost:${proxy.port}`);
+      } catch (err) {
+        settled = true;
+        stopDevServer(projectId);
+        reject(err instanceof Error ? err : new Error("Failed to start preview proxy"));
       }
     })();
   });
 }
 
 function stopDevServer(projectId: string): void {
+  const proxy = devProxies.get(projectId);
+  if (proxy) {
+    proxy.close();
+    devProxies.delete(projectId);
+  }
   const proc = devServers.get(projectId);
   if (proc) {
     proc.kill();

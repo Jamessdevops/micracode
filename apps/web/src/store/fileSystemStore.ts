@@ -12,8 +12,7 @@ import { create } from "zustand";
 /**
  * Single source of truth for the virtual file system.
  *
- * Shape is WebContainer-compatible (`FileSystemTree` from @micracode/shared)
- * so Phase 3 can call `webcontainerInstance.mount(state.tree)` directly.
+ * Shape is `FileSystemTree` from @micracode/shared (a nested file/dir map).
  */
 
 export interface FileSystemState {

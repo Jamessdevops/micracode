@@ -14,9 +14,7 @@
   "dependencies": {
     "@micracode/shared": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
-    "@radix-ui/react-slot": "^1.1.0",
-    "@webcontainer/api": "^1.6.4",
-    "class-variance-authority": "^0.7.0",
+    "@radix-ui/react-slot": "^1.1.0",    "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.453.0",
     "monaco-editor": "^0.55.1",

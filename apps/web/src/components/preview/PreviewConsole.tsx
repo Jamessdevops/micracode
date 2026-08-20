@@ -3,16 +3,16 @@
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useWebContainerStore } from "@/store/webContainerStore";
+import { usePreviewStore } from "@/store/previewStore";
 
 /**
- * Collapsible console drawer that streams output from the WebContainer
- * sandbox. Shared between the preview tab and the code tab so dev logs
- * can be surfaced wherever the user is working.
+ * Collapsible console drawer that shows streamed dev-server output. Shared
+ * between the preview tab and the code tab so dev logs can be surfaced
+ * wherever the user is working.
  */
 export function PreviewConsole() {
-  const output = useWebContainerStore((s) => s.output);
-  const clearOutput = useWebContainerStore((s) => s.clearOutput);
+  const output = usePreviewStore((s) => s.output);
+  const clearOutput = usePreviewStore((s) => s.clearOutput);
 
   const [consoleOpen, setConsoleOpen] = useState(false);
 
@@ -80,7 +80,7 @@ export function PreviewConsole() {
         >
           {output.length === 0 ? (
             <span className="italic text-muted-foreground">
-              No sandbox output yet.
+              No output yet.
             </span>
           ) : (
             output.map((line) => (

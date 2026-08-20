@@ -25,6 +25,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopDevServer: (projectId: string): Promise<void> =>
     ipcRenderer.invoke("stop-dev-server", { projectId }),
 
+  // Subscribe to raw dev-server log chunks. Returns an unsubscribe fn.
+  onDevServerLog: (
+    cb: (log: { projectId: string; source: "install" | "dev"; chunk: string }) => void
+  ): (() => void) => {
+    const listener = (
+      _e: unknown,
+      log: { projectId: string; source: "install" | "dev"; chunk: string }
+    ): void => cb(log);
+    ipcRenderer.on("dev-server-log", listener);
+    return () => ipcRenderer.removeListener("dev-server-log", listener);
+  },
+
   saveApiKeys: (keys: Record<string, string>): Promise<void> =>
     ipcRenderer.invoke("save-api-keys", keys),
 

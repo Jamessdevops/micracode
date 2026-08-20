@@ -17,7 +17,7 @@ import { promptsToUIMessages } from "@/lib/api/uiMessage";
 import { useHydrateFileSystem } from "@/store/fileSystemStore";
 import { useModelStore } from "@/store/modelStore";
 import { useUiStore } from "@/store/uiStore";
-import { useWebContainerStore } from "@/store/webContainerStore";
+import { usePreviewStore } from "@/store/previewStore";
 
 export interface WorkspaceShellProps {
   projectId: string;
@@ -50,13 +50,12 @@ export function WorkspaceShell({
     [initialPrompts],
   );
 
-  // Automatically boot the WebContainer preview as soon as the workspace
-  // mounts so the generated app is visible without requiring the user to
-  // click "Run preview". `startPreview` is no-op under Strict Mode thanks to
-  // its internal `startLock` + phase guard. When navigating between
-  // projects, tear down the previous sandbox first so we don't leak it.
-  const startPreview = useWebContainerStore((s) => s.startPreview);
-  const stopPreview = useWebContainerStore((s) => s.stopPreview);
+  // Automatically start the preview dev server as soon as the workspace mounts
+  // so the generated app is visible without the user clicking "Run preview".
+  // `startPreview` bails while a start is already in flight (Strict Mode / re-
+  // renders). When navigating between projects, stop the previous one first.
+  const startPreview = usePreviewStore((s) => s.startPreview);
+  const stopPreview = usePreviewStore((s) => s.stopPreview);
   const isPanelOpen = useUiStore((s) => s.isPanelOpen);
   const setIsPanelOpen = useUiStore((s) => s.setIsPanelOpen);
   const workspacePanelRef = useRef<ImperativePanelHandle>(null);

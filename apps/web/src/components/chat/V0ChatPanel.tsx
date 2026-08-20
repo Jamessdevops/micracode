@@ -42,7 +42,7 @@ import { cn } from "@/lib/utils";
 import { useFileSystemStore } from "@/store/fileSystemStore";
 import { useModelStore } from "@/store/modelStore";
 import { usePendingPromptStore } from "@/store/pendingPromptStore";
-import { useWebContainerStore } from "@/store/webContainerStore";
+import { usePreviewStore } from "@/store/previewStore";
 
 export interface V0ChatPanelProps {
   projectId: string;
@@ -539,7 +539,7 @@ export function V0ChatPanel({
             break;
           }
           case "data-shell-exec": {
-            useWebContainerStore
+            usePreviewStore
               .getState()
               .enqueueShell(part.data.command, part.data.cwd ?? undefined);
             break;

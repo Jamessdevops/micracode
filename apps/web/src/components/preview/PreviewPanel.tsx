@@ -4,26 +4,16 @@ import { Box, Loader2 } from "lucide-react";
 
 import { PanelShell } from "@/components/layout/PanelShell";
 import { PreviewConsole } from "@/components/preview/PreviewConsole";
-import { isDesktop } from "@/lib/desktop";
 import {
-  useWebContainerStore,
-  type WebContainerPhase,
-} from "@/store/webContainerStore";
+  usePreviewStore,
+  type PreviewPhase,
+} from "@/store/previewStore";
 
-const LOADING_PHASES: ReadonlySet<WebContainerPhase> = new Set([
-  "idle",
-  "booting",
-  "mounting",
-  "installing",
-  "startingDev",
-]);
+const LOADING_PHASES: ReadonlySet<PreviewPhase> = new Set(["idle", "starting"]);
 
-const PHASE_LABEL: Record<WebContainerPhase, string> = {
+const PHASE_LABEL: Record<PreviewPhase, string> = {
   idle: "Loading preview…",
-  booting: "Booting sandbox…",
-  mounting: "Mounting project files…",
-  installing: "Installing dependencies…",
-  startingDev: "Starting dev server…",
+  starting: "Starting dev server…",
   ready: "Ready",
   error: "Failed to start",
 };
@@ -45,31 +35,20 @@ export interface PreviewPanelProps {
 }
 
 /**
- * WebContainer-backed live preview: mounts the Zustand file tree, installs
- * dependencies, runs `package.json`'s `scripts.dev`, and embeds the URL from
- * the `server-ready` event. File edits stream into the sandbox while running.
+ * Live preview: the Electron main process runs the project's real dev server on
+ * the machine, puts a local reverse proxy in front of it, and returns the proxy
+ * URL, which is embedded here in an `<iframe>`.
  */
 export function PreviewPanel({
   chrome = true,
   showConsole = true,
 }: PreviewPanelProps) {
-  const phase = useWebContainerStore((s) => s.phase);
-  const previewUrl = useWebContainerStore((s) => s.previewUrl);
-  const errorMessage = useWebContainerStore((s) => s.errorMessage);
-
-  const isolated =
-    typeof window !== "undefined" ? Boolean(window.crossOriginIsolated) : true;
+  const phase = usePreviewStore((s) => s.phase);
+  const previewUrl = usePreviewStore((s) => s.previewUrl);
+  const errorMessage = usePreviewStore((s) => s.errorMessage);
 
   const inner = (
     <div className="flex h-full min-h-0 flex-col">
-        {!isolated && !isDesktop() ? (
-          <div className="shrink-0 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
-            This origin is not cross-origin isolated (`crossOriginIsolated` is false).
-            WebContainers need COOP/COEP; confirm dev is served from this Next app, not a
-            proxied origin.
-          </div>
-        ) : null}
-
         {phase === "error" && errorMessage ? (
           <div className="shrink-0 border-b border-border bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {errorMessage}
@@ -80,10 +59,9 @@ export function PreviewPanel({
           {previewUrl ? (
             <>
               <iframe
-                title="WebContainer preview"
+                title="App preview"
                 src={previewUrl}
                 className="h-full w-full border-0"
-                allow="cross-origin-isolated"
               />
               {LOADING_PHASES.has(phase) ? (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm">
@@ -107,9 +85,7 @@ export function PreviewPanel({
               <div className="max-w-sm space-y-1">
                 <p className="text-sm font-medium">Live preview</p>
                 <p className="text-xs text-muted-foreground">
-                  {isDesktop()
-                    ? "Preview runs your project's dev server locally, then embeds it here."
-                    : "Run preview mounts your virtual files into a StackBlitz WebContainer, runs npm install and your scripts.dev command, then opens the dev server URL here. Edits in the editor sync while the preview is running."}
+                  Preview runs your project&apos;s dev server locally, then embeds it here.
                 </p>
               </div>
             </div>

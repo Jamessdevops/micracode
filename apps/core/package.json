@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "node --experimental-strip-types src/dev.ts",
+    "dev": "tsc && node dist/dev.js",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'core: no lint'",
     "format": "prettier --check src"

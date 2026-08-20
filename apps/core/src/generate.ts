@@ -51,6 +51,24 @@ interface GenerateBody {
 
 const TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
+// The agent is told to add "use client" for files using hooks/framer-motion,
+// but models forget, and a missing directive is a hard build failure in the
+// App Router. Enforce it deterministically after every write, mirroring the
+// Python core's patcher._ensure_use_client. See packages/core patcher.py.
+const CLIENT_HOOK_RE =
+  /\b(?:useState|useEffect|useLayoutEffect|useReducer|useRef|useContext|useCallback|useMemo|useTransition|useDeferredValue|useSyncExternalStore|useImperativeHandle)\s*\(/;
+const CLIENT_IMPORT_RE = /from\s+['"](?:framer-motion|@?react-spring(?:\/[\w-]+)?)['"]/;
+const USE_CLIENT_RE = /^\s*['"]use client['"]\s*;?/;
+const SERVER_ONLY_FILES = new Set(["app/layout.tsx", "app/layout.jsx"]);
+
+function ensureUseClient(rel: string, content: string): string | null {
+  if (!/\.[jt]sx?$/.test(rel) || rel.endsWith(".d.ts")) return null;
+  if (SERVER_ONLY_FILES.has(rel)) return null;
+  if (USE_CLIENT_RE.test(content)) return null;
+  if (!CLIENT_IMPORT_RE.test(content) && !CLIENT_HOOK_RE.test(content)) return null;
+  return '"use client";\n\n' + content.replace(/^\n+/, "");
+}
+
 // Micracode targets non-technical users: the agent must just build, not
 // interview them about stacks. Every project is a Next.js (App Router) app
 // pre-scaffolded with Tailwind (see starter.ts), so there is nothing to ask.
@@ -220,10 +238,13 @@ export class Generator {
                 .replace(/^\/+/, "");
               if (!rel) break;
               try {
-                const content = fs.readFileSync(
-                  path.join(this.storage.projectDir(projectId), rel),
-                  "utf8",
-                );
+                const abs = path.join(this.storage.projectDir(projectId), rel);
+                let content = fs.readFileSync(abs, "utf8");
+                const fixed = ensureUseClient(rel, content);
+                if (fixed !== null) {
+                  fs.writeFileSync(abs, fixed, "utf8");
+                  content = fixed;
+                }
                 q.push({ type: "data-file-write", id: rel, data: { path: rel, content } });
               } catch {
                 // File vanished between write and read — skip the frame.

@@ -21,7 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useFileSystemStore } from "@/store/fileSystemStore";
 import { usePendingPromptStore } from "@/store/pendingPromptStore";
-import { useWebContainerStore } from "@/store/webContainerStore";
+import { usePreviewStore } from "@/store/previewStore";
 
 export interface ChatPanelProps {
   projectId: string;
@@ -99,7 +99,7 @@ export function ChatPanel({
             useFileSystemStore.getState().deleteFile(part.data.path);
             break;
           case "data-shell-exec":
-            useWebContainerStore
+            usePreviewStore
               .getState()
               .enqueueShell(part.data.command, part.data.cwd ?? undefined);
             break;
