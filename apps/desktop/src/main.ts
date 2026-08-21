@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   net,
   protocol,
@@ -355,10 +356,23 @@ app.whenReady().then(async () => {
 
   createWindow();
 
-  // Auto-update: check GitHub Releases on launch, download in the background,
-  // and install on next quit. Packaged builds only (dev has no app-update.yml).
+  // Auto-update: check GitHub Releases on launch and download in the background.
+  // When ready, prompt to restart now; declining installs on next quit anyway.
+  // Packaged builds only (dev has no app-update.yml).
   if (app.isPackaged) {
-    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+    autoUpdater.on("update-downloaded", async ({ version }) => {
+      const { response } = await dialog.showMessageBox({
+        type: "info",
+        buttons: ["Restart now", "Later"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Update ready",
+        message: `Micracode ${version} is ready to install.`,
+        detail: "Restart now to update, or it will install the next time you quit.",
+      });
+      if (response === 0) autoUpdater.quitAndInstall();
+    });
+    autoUpdater.checkForUpdates().catch((err) => {
       console.warn("[updater]", err);
     });
   }
