@@ -10,6 +10,7 @@ import { spawn, ChildProcess } from "child_process";
 import { createServer as createNetServer } from "net";
 import * as path from "path";
 import * as fs from "fs";
+import { autoUpdater } from "electron-updater";
 import type { CoreServer } from "@micracode/core";
 import { startProxy, type DevProxy } from "./proxy";
 
@@ -353,6 +354,14 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
+
+  // Auto-update: check GitHub Releases on launch, download in the background,
+  // and install on next quit. Packaged builds only (dev has no app-update.yml).
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.warn("[updater]", err);
+    });
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
