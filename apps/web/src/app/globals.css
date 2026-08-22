@@ -24,6 +24,15 @@
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
+    /* App is always dark (#0e0e11 shell); match the sidebar to it. */
+    --sidebar-background: 240 10% 6%;
+    --sidebar-foreground: 240 5% 65%;
+    --sidebar-primary: 184 100% 64%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 240 5% 11%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 240 5% 11%;
+    --sidebar-ring: 184 100% 64%;
   }
 
   .dark {
@@ -46,6 +55,14 @@
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
 

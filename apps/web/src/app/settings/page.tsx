@@ -9,6 +9,8 @@ import {
   updateOpenAiKey,
   type ProviderKeyState,
 } from "@/lib/api/settings";
+import { isDesktop } from "@/lib/desktop";
+import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const [openai, setOpenai] = useState<ProviderKeyState | null>(null);
@@ -41,7 +43,13 @@ export default function SettingsPage() {
 
   return (
     <main className="min-h-dvh bg-[#0e0e11] text-white">
-      <header className="flex h-14 items-center justify-between border-b border-[#1b1b1e] px-4 text-sm">
+      <header
+        className={cn(
+          "flex h-14 items-center justify-between border-b border-[#1b1b1e] px-4 text-sm",
+          // Clear the macOS traffic lights in the desktop shell.
+          isDesktop() && "pt-7",
+        )}
+      >
         <Link href="/" className="text-zinc-400 hover:text-white">
           ← Back
         </Link>
