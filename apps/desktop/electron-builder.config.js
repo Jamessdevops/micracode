@@ -22,6 +22,10 @@ module.exports = {
   directories: {
     output: "release",
   },
+  // Drop the version from binary names; keep arch to avoid arm64/x64 collisions.
+  // (A custom artifactName makes electron-builder emit the literal x64 tag.)
+  // zip: Micracode-x64-mac.zip / Micracode-arm64-mac.zip
+  artifactName: "${productName}-${arch}-mac.${ext}",
   publish: [
     {
       provider: "github",
@@ -47,6 +51,8 @@ module.exports = {
     notarize: true,
   },
   dmg: {
+    // dmg: Micracode-x64.dmg / Micracode-arm64.dmg
+    artifactName: "${productName}-${arch}.${ext}",
     // Standard drag-to-Applications layout.
     contents: [
       { x: 130, y: 220, type: "file" },
