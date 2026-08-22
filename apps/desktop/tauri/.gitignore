@@ -1,5 +1,0 @@
-# Rust / Cargo
-/target
-
-# Tauri generated files
-/gen/schemas

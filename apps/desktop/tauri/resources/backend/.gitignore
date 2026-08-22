@@ -1,4 +1,0 @@
-# Backend binary is staged here at build time by scripts/prepare-bundle.sh.
-# Track the dir (.gitkeep) but never commit the built artifact.
-micracode-api
-micracode-api.exe
