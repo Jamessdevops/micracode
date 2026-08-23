@@ -7,7 +7,7 @@ import {
   protocol,
   shell,
 } from "electron";
-import { spawn, ChildProcess } from "child_process";
+import { spawn, execSync, ChildProcess } from "child_process";
 import { createServer as createNetServer } from "net";
 import * as path from "path";
 import * as fs from "fs";
@@ -323,7 +323,29 @@ function createWindow(): void {
 // App lifecycle
 // ---------------------------------------------------------------------------
 
+// GUI apps launched from Finder/Dock on macOS (and Linux) inherit a minimal
+// PATH without /opt/homebrew/bin, /usr/local/bin, nvm, etc. — so `npm` isn't
+// found and dev servers exit 127. Pull the login shell's PATH in and merge it.
+// No-op in dev (already launched from a terminal with a full PATH).
+function fixPath(): void {
+  if (process.platform === "win32" || !app.isPackaged) return;
+  try {
+    const shellBin = process.env.SHELL || "/bin/bash";
+    const out = execSync(`${shellBin} -ilc 'echo -n "$PATH"'`, {
+      encoding: "utf8",
+      timeout: 5000,
+    }).trim();
+    if (out) process.env.PATH = out;
+  } catch {
+    // Fall back to whatever PATH we have plus the common homebrew locations.
+    process.env.PATH = [process.env.PATH, "/opt/homebrew/bin", "/usr/local/bin"]
+      .filter(Boolean)
+      .join(":");
+  }
+}
+
 app.whenReady().then(async () => {
+  fixPath();
   const webDist = getWebDistPath();
 
   // Serve the Next.js static export via app://
