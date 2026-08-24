@@ -286,6 +286,16 @@ bun run api:format    # ruff format
 
 ---
 
+## Contributor ♥️
+
+Big thanks to everyone who's been part of the Micracode journey. 
+
+Micracode is a community effort, and it keeps getting better because of people like you.
+
+![Contributors](https://contrib.rocks/image?repo=Jamessdevops/micracode&max=500&columns=20&anon=1)
+
+---
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
@@ -299,4 +309,3 @@ Contributions are welcome! Feel free to open issues and pull requests.
 ---
 
 **Join our community** [Discord](https://discord.gg/YmBNWhwdg)
-
