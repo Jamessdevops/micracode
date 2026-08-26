@@ -1,6 +1,6 @@
 "use client";
 
-import { Code2, Download, PanelRight, PanelRightClose, Settings } from "lucide-react";
+import { Code2, Download, Home, PanelRight, PanelRightClose, Settings } from "lucide-react";
 import Link from "next/link";
 
 import { getProjectDownloadUrl } from "@/lib/api/projects";
@@ -34,19 +34,22 @@ export function TopNav({ projectId, projectName, onPublish }: TopNavProps) {
   const togglePanel = useUiStore((s) => s.togglePanel);
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-zinc-800 bg-black pl-20 pr-3 text-sm text-zinc-50">
-      <div className="flex items-center gap-2">
+    <header
+      className="flex h-12 shrink-0 items-center justify-between border-zinc-800 bg-black pl-20 pr-3 text-sm text-zinc-50"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    >
+      <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
         <Link
           href="/"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-zinc-50 text-black transition hover:opacity-90"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:opacity-90"
           aria-label="Home"
           title="Micracode"
         >
-          <span className="font-black leading-none tracking-tighter">MC</span>
+          <Home className="size-4" />
         </Link>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
         <a
           href={getProjectDownloadUrl(projectId)}
           download
