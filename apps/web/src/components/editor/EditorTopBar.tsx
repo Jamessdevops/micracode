@@ -1,8 +1,10 @@
 "use client";
 
-import { Code2, Eye, RefreshCw } from "lucide-react";
+import { Code2, Eye, MousePointerSquareDashed, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { usePreviewStore } from "@/store/previewStore";
+import { useSelectionStore } from "@/store/selectionStore";
 
 export type WorkspaceTab = "preview" | "code" | "database";
 
@@ -51,6 +53,9 @@ export function EditorTopBar({
   onTerminalToggle: _onTerminalToggle,
   onRefresh,
 }: EditorTopBarProps) {
+  const phase = usePreviewStore((s) => s.phase);
+  const selectMode = useSelectionStore((s) => s.selectMode);
+  const toggleSelectMode = useSelectionStore((s) => s.toggleSelectMode);
   return (
     <div className="flex h-10 shrink-0 items-center gap-2 border-b border-zinc-800 bg-[#0E0E11] p-[25px]">
       <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
@@ -87,6 +92,26 @@ export function EditorTopBar({
           >
             <RefreshCw className="size-3.5" />
           </button>
+          {phase === "ready" ? (
+            <button
+              type="button"
+              onClick={toggleSelectMode}
+              aria-pressed={selectMode}
+              title={
+                selectMode
+                  ? "Exit select mode"
+                  : "Select an element (or Alt-click)"
+              }
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition",
+                selectMode
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-50",
+              )}
+            >
+              <MousePointerSquareDashed className="size-3.5" />
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="flex-1" />

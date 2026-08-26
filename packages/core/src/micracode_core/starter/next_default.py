@@ -16,9 +16,10 @@ NEXT_STARTER_FILES: dict[str, str] = {
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0 --port 3000"
+    "dev": "next dev --hostname 0.0.0.0"
   },
   "dependencies": {
+    "@babel/runtime": "7.25.6",
     "clsx": "2.1.1",
     "framer-motion": "11.11.17",
     "lucide-react": "0.453.0",
@@ -78,6 +79,48 @@ const nextConfig = {
   },
 };
 export default nextConfig;
+""",
+    "babel.config.js": """\
+const path = require("path");
+
+/**
+ * Dev-only: stamp each host (lowercase) JSX element with its source location as
+ * `data-mc-loc="relative/path.tsx:line:col"`. The preview click-to-select bridge
+ * reads this to map a clicked DOM node back to the file that renders it.
+ *
+ * Presence of this Babel config makes Next use Babel instead of SWC — that's why
+ * the template avoids `next/font` (which requires SWC). In production builds
+ * NODE_ENV is "production", so the plugin is dropped and no attribute is emitted.
+ */
+function jsxSourceLoc({ types: t }) {
+  return {
+    visitor: {
+      JSXOpeningElement(nodePath, state) {
+        const name = nodePath.node.name;
+        // Host elements only (div, h1, button…): components would receive it as
+        // an unknown prop, and the clicked DOM node is always a host element.
+        if (name.type !== "JSXIdentifier" || !/^[a-z]/.test(name.name)) return;
+        const loc = nodePath.node.loc;
+        if (!loc) return;
+        if (nodePath.node.attributes.some(
+          (a) => a.type === "JSXAttribute" && a.name.name === "data-mc-loc",
+        )) return;
+        const rel = path.relative(process.cwd(), state.file.opts.filename || "");
+        nodePath.node.attributes.push(
+          t.jsxAttribute(
+            t.jsxIdentifier("data-mc-loc"),
+            t.stringLiteral(`${rel}:${loc.start.line}:${loc.start.column}`),
+          ),
+        );
+      },
+    },
+  };
+}
+
+module.exports = {
+  presets: ["next/babel"],
+  plugins: process.env.NODE_ENV === "development" ? [jsxSourceLoc] : [],
+};
 """,
     "postcss.config.mjs": """\
 export default {
@@ -153,6 +196,7 @@ export default config;
 
 @layer base {
   :root {
+    --font-sans: "Inter", system-ui, -apple-system, sans-serif;
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
@@ -221,23 +265,28 @@ export function cn(...inputs: ClassValue[]) {
 """,
     "app/layout.tsx": """\
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Your app",
   description: "Built with Micracode.",
 };
 
+// Inter via a plain stylesheet link rather than `next/font` so the project can
+// use a Babel config (which disables SWC, and `next/font` requires SWC) — Babel
+// is what stamps source locations onto the DOM for click-to-select. See
+// babel.config.js. `--font-sans` is defined in globals.css.
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="font-sans">{children}</body>
     </html>
   );

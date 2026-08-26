@@ -148,3 +148,6 @@ class GenerateRequest(BaseModel):
     model: str | None = Field(default=None, max_length=128)
     mode: Literal["plan", "build"] = "build"
     attachments: list[Attachment] | None = Field(default=None, max_length=10)
+    # Preview click-to-select context, prepended to the codegen prompt only (not
+    # persisted as the user message, so the chat transcript stays clean).
+    selection_context: str | None = Field(default=None, max_length=2000)

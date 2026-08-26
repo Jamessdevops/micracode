@@ -51,6 +51,7 @@ export function V0WorkspacePanel({
   const [tab, setTab] = useState<WorkspaceTab>("preview");
   const [selected, setSelected] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const tree = useFileSystemStore((s) => s.tree);
   const upsertFile = useFileSystemStore((s) => s.upsertFile);
@@ -146,7 +147,12 @@ export function V0WorkspacePanel({
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[#0E0E11]">
-      <EditorTopBar activeTab={tab} onTabChange={setTab} urlText="/" />
+      <EditorTopBar
+        activeTab={tab}
+        onTabChange={setTab}
+        urlText="/"
+        onRefresh={() => setReloadKey((k) => k + 1)}
+      />
 
       <div className="flex min-h-0 flex-1">
         {tab === "code" ? (
@@ -205,6 +211,7 @@ export function V0WorkspacePanel({
                 projectId={projectId}
                 chrome={false}
                 showConsole={false}
+                reloadKey={reloadKey}
               />
             </div>
           ) : null}

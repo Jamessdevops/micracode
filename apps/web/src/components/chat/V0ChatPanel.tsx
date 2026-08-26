@@ -11,9 +11,11 @@ import {
   HelpCircle,
   History,
   ListTodo,
+  MousePointerSquareDashed,
   RefreshCw,
   Search,
   Sparkles,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -41,6 +43,7 @@ import {
   type MicracodeUIMessage,
 } from "@/lib/api/uiMessage";
 import { cn } from "@/lib/utils";
+import { useSelectionStore } from "@/store/selectionStore";
 import { useFileSystemStore } from "@/store/fileSystemStore";
 import { useModelStore } from "@/store/modelStore";
 import { usePendingPromptStore } from "@/store/pendingPromptStore";
@@ -355,6 +358,8 @@ export function V0ChatPanel({
   const pathname = usePathname();
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const pendingSelection = useSelectionStore((s) => s.pending);
+  const clearSelection = useSelectionStore((s) => s.clear);
   // Attachments for the in-flight turn. The transport reads this at send
   // time; we clear the visible state immediately but keep the ref until
   // `prepareSendMessagesRequest` has consumed it.
@@ -398,6 +403,10 @@ export function V0ChatPanel({
           const { provider, model } = useModelStore.getState();
           const atts = attachmentsRef.current;
           attachmentsRef.current = [];
+          // A preview-selected element rides along as backend-only context so
+          // it enriches the codegen prompt without polluting the transcript.
+          const selection = useSelectionStore.getState().pending;
+          useSelectionStore.getState().clear();
           return {
             body: {
               project_id: projectId,
@@ -405,6 +414,7 @@ export function V0ChatPanel({
               retry,
               provider,
               model,
+              selection_context: selection?.block,
               attachments: atts.length
                 ? atts.map((a) => ({
                     name: a.name,
@@ -943,6 +953,20 @@ export function V0ChatPanel({
           "shrink-0 border-zinc-800 bg-black p-3",
         )}
       >
+        {pendingSelection ? (
+          <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200">
+            <MousePointerSquareDashed className="size-3.5 text-zinc-400" />
+            <span className="font-mono">{pendingSelection.label}</span>
+            <button
+              type="button"
+              onClick={() => clearSelection()}
+              className="text-zinc-500 transition hover:text-zinc-200"
+              aria-label="Remove selected element"
+            >
+              <X className="size-3" />
+            </button>
+          </div>
+        ) : null}
         <V0ChatInput
           value={draft}
           onChange={setDraft}

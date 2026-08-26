@@ -78,9 +78,14 @@ async def _ui_message_stream(
     yield _frame({"type": "start-step"})
 
     try:
+        codegen_prompt = (
+            f"{payload.selection_context}\n\n{payload.prompt}"
+            if payload.selection_context
+            else payload.prompt
+        )
         async for event in run_codegen_stream(
             project_id=slug,
-            prompt=payload.prompt,
+            prompt=codegen_prompt,
             history=prior_history,
             storage=storage,
             config=engine.config,
