@@ -87,6 +87,7 @@ async def _ui_message_stream(
             provider=payload.provider,
             model=payload.model,
             mode=payload.mode,
+            attachments=payload.attachments,
             request_id=request_id,
         ):
             if await request.is_disconnected():

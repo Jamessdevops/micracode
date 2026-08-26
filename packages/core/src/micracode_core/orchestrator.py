@@ -9,6 +9,8 @@ so storage and the client tree stay in sync.
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -21,6 +23,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from .config import CoreConfig
 from .schemas.project import PromptRecord
 from .schemas.stream import (
+    Attachment,
     ErrorEvent,
     FileWriteEvent,
     MessageDeltaEvent,
@@ -67,10 +70,87 @@ def build_llm(
 HISTORY_TURN_CAP = 20
 HISTORY_CHAR_CAP = 12_000
 CONTEXT_FILE_DISPLAY_CAP = 12_000
+# Per-attachment cap on extracted text injected into the prompt.
+ATTACHMENT_TEXT_CAP = 20_000
+_TEXT_MIME_EXACT = {
+    "application/json",
+    "application/xml",
+    "application/javascript",
+    "application/typescript",
+    "application/x-yaml",
+    "application/yaml",
+    "application/toml",
+    "application/csv",
+    "application/x-sh",
+}
 
 
 class CodegenError(RuntimeError):
     """Raised when the LLM cannot produce a usable code bundle."""
+
+
+def _pdf_text(raw: bytes) -> str | None:
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(raw))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        return text.strip() or None
+    except Exception:
+        logger.exception("pdf text extraction failed")
+        return None
+
+
+def _attachment_text(att: Attachment) -> str | None:
+    """Extracted text for a non-image attachment, or None to skip."""
+    mime = att.mime_type.lower()
+    try:
+        raw = base64.b64decode(att.data, validate=False)
+    except Exception:
+        return None
+    if mime == "application/pdf":
+        text = _pdf_text(raw)
+    elif mime.startswith("text/") or mime in _TEXT_MIME_EXACT:
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        return None  # images handled separately; other binaries skipped
+    if not text:
+        return None
+    return text[:ATTACHMENT_TEXT_CAP]
+
+
+def _compose_human(text: str, attachments: list[Attachment] | None):
+    """Human-message content: plain string, or a multimodal content list
+    when the turn carries image attachments. Text/PDF attachments are
+    appended to ``text`` as labeled blocks; images become image_url parts.
+    """
+    if not attachments:
+        return text
+    blocks: list[str] = []
+    images: list[dict] = []
+    for att in attachments:
+        if att.mime_type.lower().startswith("image/"):
+            images.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{att.mime_type};base64,{att.data}"
+                    },
+                }
+            )
+            continue
+        extracted = _attachment_text(att)
+        if extracted:
+            blocks.append(f"----- Attached file: {att.name} -----\n{extracted}")
+    full_text = text
+    if blocks:
+        full_text = (
+            f"{text}\n\nAttached files provided by the user for context:\n\n"
+            + "\n\n".join(blocks)
+        )
+    if not images:
+        return full_text
+    return [{"type": "text", "text": full_text}, *images]
 
 
 def _history_to_messages(
@@ -133,6 +213,7 @@ def _build_planner_messages(
     history: list[BaseMessage],
     context: ProjectContext,
     family: str,
+    attachments: list[Attachment] | None = None,
 ) -> list[BaseMessage]:
     planner_prompt = get_prompt(family, "planner")
     human_content = (
@@ -140,13 +221,17 @@ def _build_planner_messages(
     )
     if family == "openai-reasoning":
         return [
-            HumanMessage(content=f"{planner_prompt}\n\n{human_content}"),
+            HumanMessage(
+                content=_compose_human(
+                    f"{planner_prompt}\n\n{human_content}", attachments
+                )
+            ),
             *history,
         ]
     return [
         SystemMessage(content=planner_prompt),
         *history,
-        HumanMessage(content=human_content),
+        HumanMessage(content=_compose_human(human_content, attachments)),
     ]
 
 
@@ -159,11 +244,12 @@ async def _plan(
     model: str,
     family: str,
     config: CoreConfig,
+    attachments: list[Attachment] | None = None,
 ) -> str:
     try:
         llm = build_llm(provider, model, config, family=family)
         msg = await llm.ainvoke(
-            _build_planner_messages(prompt, history, context, family)
+            _build_planner_messages(prompt, history, context, family, attachments)
         )
     except asyncio.CancelledError:
         raise
@@ -183,6 +269,7 @@ def _build_codegen_messages(
     history: list[BaseMessage],
     context: ProjectContext,
     family: str,
+    attachments: list[Attachment] | None = None,
 ) -> list[BaseMessage]:
     codegen_prompt = get_prompt(family, "codegen")
     human_content = (
@@ -201,13 +288,17 @@ def _build_codegen_messages(
     )
     if family == "openai-reasoning":
         return [
-            HumanMessage(content=f"{codegen_prompt}\n\n{human_content}"),
+            HumanMessage(
+                content=_compose_human(
+                    f"{codegen_prompt}\n\n{human_content}", attachments
+                )
+            ),
             *history,
         ]
     return [
         SystemMessage(content=codegen_prompt),
         *history,
-        HumanMessage(content=human_content),
+        HumanMessage(content=_compose_human(human_content, attachments)),
     ]
 
 
@@ -279,6 +370,7 @@ async def _codegen_tool_loop(
     storage: Storage,
     project_id: str,
     request_id: str,
+    attachments: list[Attachment] | None = None,
 ) -> AsyncIterator[StreamEvent]:
     try:
         llm = build_llm(provider, model, config, family=family)
@@ -286,7 +378,9 @@ async def _codegen_tool_loop(
         raise CodegenError(f"codegen llm init failed: {exc}") from exc
 
     bound_llm = llm.bind_tools(ALL_TOOLS)
-    messages: list[BaseMessage] = _build_codegen_messages(prompt, plan, history, context, family)
+    messages: list[BaseMessage] = _build_codegen_messages(
+        prompt, plan, history, context, family, attachments
+    )
     project_root = storage.project_dir(project_id)
 
     # Session checklist maintained by the todowrite/todoread tools. Lives for
@@ -540,6 +634,7 @@ async def run_codegen_stream(
     model: str | None = None,
     family: str | None = None,
     mode: str = "build",
+    attachments: list[Attachment] | None = None,
     request_id: str | None = None,
 ) -> AsyncIterator[StreamEvent]:
     current = config or CoreConfig()
@@ -600,6 +695,7 @@ async def run_codegen_stream(
             model=resolved_model,
             family=resolved_family,
             config=current,
+            attachments=attachments,
         )
     except CodegenError as exc:
         logger.warning("codegen plan failed: %s", exc)
@@ -639,6 +735,7 @@ async def run_codegen_stream(
             storage=store,
             project_id=project_id,
             request_id=resolved_request_id,
+            attachments=attachments,
         ):
             yield event
             if event.type == "status" and getattr(event, "stage", None) == "max_iterations_reached":

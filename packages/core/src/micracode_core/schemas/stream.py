@@ -121,6 +121,20 @@ StreamEvent = Annotated[
 ]
 
 
+class Attachment(BaseModel):
+    """A file the user attached for per-turn context (never persisted).
+
+    ``data`` is base64-encoded file bytes. The 28M cap on the encoded
+    string is ~20MB decoded, comfortably above the 10MB client-side cap.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=256)
+    mime_type: str = Field(min_length=1, max_length=128)
+    data: str = Field(min_length=1, max_length=28_000_000)
+
+
 class GenerateRequest(BaseModel):
     """Request body for ``POST /v1/generate``."""
 
@@ -133,3 +147,4 @@ class GenerateRequest(BaseModel):
     provider: Literal["openai", "gemini", "ollama"] | None = None
     model: str | None = Field(default=None, max_length=128)
     mode: Literal["plan", "build"] = "build"
+    attachments: list[Attachment] | None = Field(default=None, max_length=10)

@@ -24,6 +24,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 
+import { composeAttachments, type RawAttachment } from "./attachments.js";
 import { Storage } from "./storage.js";
 
 // pi pulls in undici 8.9, whose webidl does `markAsUncloneable = require(
@@ -47,6 +48,9 @@ interface GenerateBody {
   // model here when the UI needs per-request override.
   provider?: string;
   model?: string;
+  // Per-turn context files (images -> vision, text/PDF -> appended text).
+  // Never persisted; see composeAttachments.
+  attachments?: RawAttachment[];
 }
 
 const TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
@@ -173,6 +177,14 @@ export class Generator {
     }
     if (!body.retry) this.storage.appendPrompt(projectId, "user", prompt);
 
+    // Fold attachments into the turn: text/PDF appended to the prompt, images
+    // sent through pi's vision channel. Persisted history keeps the plain
+    // prompt above; only the model sees the augmented version.
+    const { prompt: turnPrompt, images } = await composeAttachments(
+      prompt,
+      body.attachments,
+    );
+
     const messageId = `msg_${Math.random().toString(36).slice(2, 18)}`;
     const textId = `txt_${Math.random().toString(36).slice(2, 18)}`;
 
@@ -280,7 +292,10 @@ export class Generator {
       const run = (async () => {
         try {
           if (session) {
-            await session.prompt(prompt);
+            await session.prompt(
+              turnPrompt,
+              images.length ? { images } : undefined,
+            );
             await session.waitForIdle();
           }
         } catch (err) {

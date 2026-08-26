@@ -27,6 +27,8 @@ import {
 } from "react";
 
 import { V0ChatInput } from "@/components/chat/V0ChatInput";
+import type { ChatAttachment } from "@/lib/attachments";
+import { filesToAttachments } from "@/lib/attachments";
 import { env } from "@/lib/env";
 import {
   answerQuestion,
@@ -352,6 +354,11 @@ export function V0ChatPanel({
 }: V0ChatPanelProps) {
   const pathname = usePathname();
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  // Attachments for the in-flight turn. The transport reads this at send
+  // time; we clear the visible state immediately but keep the ref until
+  // `prepareSendMessagesRequest` has consumed it.
+  const attachmentsRef = useRef<ChatAttachment[]>([]);
   const [stage, setStage] = useState<Stage>("idle");
   const [isReverting, setIsReverting] = useState<string | null>(null);
   const [logsByAssistantId, setLogsByAssistantId] = useState<
@@ -389,6 +396,8 @@ export function V0ChatPanel({
           // swapping models mid-session doesn't require recreating the
           // transport and resetting `useChat`'s internal state.
           const { provider, model } = useModelStore.getState();
+          const atts = attachmentsRef.current;
+          attachmentsRef.current = [];
           return {
             body: {
               project_id: projectId,
@@ -396,6 +405,13 @@ export function V0ChatPanel({
               retry,
               provider,
               model,
+              attachments: atts.length
+                ? atts.map((a) => ({
+                    name: a.name,
+                    mime_type: a.mimeType,
+                    data: a.data,
+                  }))
+                : undefined,
             },
           };
         },
@@ -728,8 +744,32 @@ export function V0ChatPanel({
     if (!draft.trim() || isStreaming) return;
     const prompt = draft;
     setDraft("");
+    attachmentsRef.current = attachments;
+    setAttachments([]);
     await sendMessage({ text: prompt });
-  }, [draft, isStreaming, sendMessage]);
+  }, [attachments, draft, isStreaming, sendMessage]);
+
+  const onAttachFiles = useCallback(async (files: File[]) => {
+    const { accepted } = await filesToAttachments(files);
+    if (accepted.length === 0) return;
+    setAttachments((prev) => [...prev, ...accepted]);
+  }, []);
+
+  const onRemoveAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  // In the Electron desktop app a file dropped anywhere but our drop zone
+  // would otherwise navigate the window to `file://…`. Swallow stray drops.
+  useEffect(() => {
+    const swallow = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", swallow);
+    window.addEventListener("drop", swallow);
+    return () => {
+      window.removeEventListener("dragover", swallow);
+      window.removeEventListener("drop", swallow);
+    };
+  }, []);
 
   const lastUserText = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -909,6 +949,9 @@ export function V0ChatPanel({
           onSubmit={() => void onSend()}
           onStop={() => stop()}
           isStreaming={isStreaming}
+          attachments={attachments}
+          onAttachFiles={(files) => void onAttachFiles(files)}
+          onRemoveAttachment={onRemoveAttachment}
           placeholder={
             messages.length === 0
               ? "Describe what you want to build..."
