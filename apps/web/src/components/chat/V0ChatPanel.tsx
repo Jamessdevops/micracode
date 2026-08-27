@@ -11,11 +11,9 @@ import {
   HelpCircle,
   History,
   ListTodo,
-  MousePointerSquareDashed,
   RefreshCw,
   Search,
   Sparkles,
-  X,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -403,10 +401,6 @@ export function V0ChatPanel({
           const { provider, model } = useModelStore.getState();
           const atts = attachmentsRef.current;
           attachmentsRef.current = [];
-          // A preview-selected element rides along as backend-only context so
-          // it enriches the codegen prompt without polluting the transcript.
-          const selection = useSelectionStore.getState().pending;
-          useSelectionStore.getState().clear();
           return {
             body: {
               project_id: projectId,
@@ -414,7 +408,6 @@ export function V0ChatPanel({
               retry,
               provider,
               model,
-              selection_context: selection?.block,
               attachments: atts.length
                 ? atts.map((a) => ({
                     name: a.name,
@@ -750,6 +743,14 @@ export function V0ChatPanel({
     void sendMessage({ text: pendingPrompt });
   }, [pendingPrompt, isStreaming, clearPending, sendMessage]);
 
+  // React Grab-style: selecting an element dumps its grabbed component source
+  // straight into the composer so the user sees and can edit it before sending.
+  useEffect(() => {
+    if (!pendingSelection) return;
+    setDraft((d) => `${pendingSelection.block}\n\n${d}`);
+    clearSelection();
+  }, [pendingSelection, clearSelection]);
+
   const onSend = useCallback(async () => {
     if (!draft.trim() || isStreaming) return;
     const prompt = draft;
@@ -857,7 +858,7 @@ export function V0ChatPanel({
             if (m.role === "user") {
               return (
                 <div key={m.id} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-2xl bg-zinc-800 px-4 py-2 text-sm text-zinc-50">
+                  <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-zinc-800 px-4 py-2 text-sm text-zinc-50">
                     {text}
                   </div>
                 </div>
@@ -953,20 +954,6 @@ export function V0ChatPanel({
           "shrink-0 border-zinc-800 bg-black p-3",
         )}
       >
-        {pendingSelection ? (
-          <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200">
-            <MousePointerSquareDashed className="size-3.5 text-zinc-400" />
-            <span className="font-mono">{pendingSelection.label}</span>
-            <button
-              type="button"
-              onClick={() => clearSelection()}
-              className="text-zinc-500 transition hover:text-zinc-200"
-              aria-label="Remove selected element"
-            >
-              <X className="size-3" />
-            </button>
-          </div>
-        ) : null}
         <V0ChatInput
           value={draft}
           onChange={setDraft}

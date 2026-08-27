@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp, Paperclip, Square, X } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ModelPicker } from "@/components/chat/ModelPicker";
 import type { ChatAttachment } from "@/lib/attachments";
@@ -36,6 +36,15 @@ export function V0ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [dragActive, setDragActive] = useState(false);
+
+  // Auto-grow to fit content (up to a cap) so a dumped code block is visible
+  // rather than crammed into a one-row box.
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
+  }, [value]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -128,7 +137,7 @@ export function V0ChatInput({
         placeholder={placeholder}
         disabled={disabled}
         className={cn(
-          "block w-full resize-none bg-transparent px-2 py-1.5 text-sm text-zinc-50 outline-none",
+          "block max-h-60 w-full resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-sm text-zinc-50 outline-none",
           "placeholder:text-zinc-500",
           "disabled:cursor-not-allowed disabled:opacity-60",
         )}

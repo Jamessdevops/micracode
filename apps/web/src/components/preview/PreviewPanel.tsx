@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PanelShell } from "@/components/layout/PanelShell";
 import { PreviewConsole } from "@/components/preview/PreviewConsole";
 import { cn } from "@/lib/utils";
+import { useFileSystemStore } from "@/store/fileSystemStore";
 import { useSelectionStore } from "@/store/selectionStore";
 import {
   usePreviewStore,
@@ -31,6 +32,52 @@ type BridgeMsg =
 
 const basename = (p: string) => p.split(/[/\\]/).pop() ?? p;
 
+const CODE_CAP = 8000;
+
+// A top-level declaration line (no leading indent) that begins a component or
+// function: `export default function X`, `function X`, `const X = ...`, etc.
+const DECL_RE =
+  /^(export\s+)?(default\s+)?(async\s+)?(function\b|const\s+[A-Za-z0-9_$]+\s*[:=])/;
+
+/**
+ * "React Grab"-style source grab: given a file's contents and the 1-based line
+ * of the clicked element, return the enclosing top-level component/function.
+ * Heuristic (no AST): walk up to the nearest unindented declaration, then down
+ * to the first line whose first char is `}` at column 0 — the top-level block's
+ * close under Prettier-style formatting. Falls back to the whole file if the
+ * boundaries can't be found. Truncated to CODE_CAP with a marker.
+ */
+function grabComponent(content: string, line: number): string {
+  const lines = content.split("\n");
+  const target = Math.min(Math.max(line - 1, 0), lines.length - 1);
+
+  let start = -1;
+  for (let i = target; i >= 0; i--) {
+    const l = lines[i]!;
+    if (!/^\s/.test(l) && DECL_RE.test(l)) {
+      start = i;
+      break;
+    }
+  }
+  let end = -1;
+  if (start !== -1) {
+    for (let i = Math.max(target, start + 1); i < lines.length; i++) {
+      if (/^[})]/.test(lines[i]!)) {
+        end = i;
+        break;
+      }
+    }
+  }
+
+  const snippet =
+    start !== -1 && end !== -1
+      ? lines.slice(start, end + 1).join("\n")
+      : content;
+  return snippet.length > CODE_CAP
+    ? snippet.slice(0, CODE_CAP) + "\n… (truncated — read the file for the rest)"
+    : snippet;
+}
+
 /**
  * The target-element block prepended to the codegen prompt. Written as an
  * imperative directive (not a hint) because `source` is usually unknown — most
@@ -42,6 +89,7 @@ function selectionBlock(
   source: SourceLoc | undefined,
   component: string | undefined,
   dom: DomHint,
+  code: string | undefined,
 ): string {
   const lines = [
     "The user selected one specific element in the live preview. The request",
@@ -73,6 +121,14 @@ function selectionBlock(
       ? "Edit the element at the source location above; the tag and text confirm it."
       : "If no element matches the tag and text above, ask instead of guessing.",
   );
+  if (code && source)
+    lines.push(
+      "",
+      `Current source of the enclosing component (${source.path}):`,
+      "```tsx",
+      code,
+      "```",
+    );
   return lines.join("\n");
 }
 
@@ -160,9 +216,17 @@ export function PreviewPanel({
       else if (msg.type === "mc:leave" || msg.type === "mc:clear")
         setHover(null);
       else if (msg.type === "mc:select") {
-        // Clicking an element sends it straight to chat as a draft.
+        // Clicking an element sends it straight to chat as a draft. Grab the
+        // enclosing component's current source from the client-side file store
+        // (its keys match the stamped data-mc-loc paths) so the agent edits the
+        // real code, not a guess anchored on tag/text.
+        const file = msg.source
+          ? useFileSystemStore.getState().getFile(msg.source.path)
+          : undefined;
+        const code =
+          file && msg.source ? grabComponent(file, msg.source.line) : undefined;
         setPendingSelection({
-          block: selectionBlock(msg.source, msg.component, msg.dom),
+          block: selectionBlock(msg.source, msg.component, msg.dom, code),
           label:
             (msg.component ? `${msg.component} — ` : "") +
             (msg.source
