@@ -50,7 +50,7 @@ function writeStore(data: Partial<StoreData>): void {
 // ---------------------------------------------------------------------------
 
 // The core backend (@micracode/core) runs in-process, inside this main
-// process — not as a spawned child like the old Python binary.
+// process — not as a spawned child.
 let coreServer: CoreServer | null = null;
 let backendPort = DEFAULT_STORE.backendPort;
 let mainWindow: BrowserWindow | null = null;

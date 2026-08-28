@@ -1,6 +1,0 @@
-[tool.uv.workspace]
-members = [
-    "packages/core",
-    "micracode",
-    "apps/api",
-]

@@ -1,6 +1,6 @@
 /**
- * Projects on disk, matching the layout the Python backend uses (see
- * docs/projects-on-disk.md): each project is a folder under the data root with
+ * Projects on disk (see docs/projects-on-disk.md): each project is a
+ * folder under the data root with
  * a `.micracode/` sidecar holding `project.json` and `prompts.jsonl`. The
  * project id is the folder slug.
  */

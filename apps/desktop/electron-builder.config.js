@@ -13,11 +13,6 @@ module.exports = {
       to: "web",
       filter: ["**/*"],
     },
-    {
-      from: "resources/backend",
-      to: "backend",
-      filter: ["**/*"],
-    },
   ],
   directories: {
     output: "release",

@@ -16,9 +16,9 @@
 <br/>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI](https://img.shields.io/pypi/v/micracode.svg)](https://pypi.org/project/micracode/)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-33-47848F.svg)](https://www.electronjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6.svg)](https://www.typescriptlang.org/)
 
 </div>
 
@@ -32,48 +32,19 @@
 
 ## Quick Install
 
-```bash
-pip install micracode
-```
+Micracode ships as a desktop app. Download the latest macOS build from the
+[**Releases**](https://github.com/Jamessdevops/micracode/releases) page, open it,
+and you're ready to go — no Node.js, no Python, no separate backend to run. The
+core backend runs in-process inside the app.
 
-Requires **Python 3.12+**. No Node.js, no Docker, no separate frontend setup.
+### 1. Add an API key
 
-### 1. Set your API key
+On first launch, open **Settings** and paste a key for whichever LLM provider
+you want to use — OpenAI, Google (Gemini), or Anthropic. The model picker shows
+whichever providers have a key set. Keys are stored locally in a config file on
+your machine; nothing is sent to a Micracode server.
 
-**Google Gemini** (default, free tier available):
-```bash
-export GOOGLE_API_KEY=your-key
-```
-
-**OpenAI:**
-```bash
-export LLM_PROVIDER=openai
-export OPENAI_API_KEY=your-key
-export OPENAI_MODEL=gpt-4o
-```
-
-**Ollama** (local, no API key needed):
-```bash
-export LLM_PROVIDER=ollama
-export OLLAMA_MODEL=llama3.2   # any model you have pulled
-```
-
-Or put any of the above in a `.env` file in your working directory.
-
-### 2. Start
-
-```bash
-micracode web
-```
-
-Open **http://localhost:8000** — the full UI and API run from the same process.
-
-```bash
-micracode web --port 9000       # change port
-micracode web --host 0.0.0.0   # expose on your local network
-```
-
-### 3. Build something
+### 2. Build something
 
 - Type a description on the home screen → Micracode generates a working project
 - Chat to iterate, edit code in the Monaco editor, and preview your app live
@@ -95,11 +66,11 @@ Star us, and you will receive all release notifications from GitHub without any 
 
 - ** In-Browser Monaco Editor** — Edit generated code directly in a full Monaco editor; changes persist to disk.
 
-- ** Pluggable LLM Providers** — Ships with Google Gemini by default; switch to OpenAI or local Ollama with one env var. Ollama models are discovered dynamically — no API key required.
+- ** Pluggable LLM Providers** — Bring your own key for OpenAI, Google Gemini, or Anthropic. The model picker adapts to whichever keys you've set.
 
 - ** Local-First Storage** — Projects live as plain folders on your filesystem. No database, no auth, no cloud service required.
 
-- ** Streaming Backend** — Server-sent events deliver generated code in real time using a typed stream-event contract shared between web and API.
+- ** Streaming Backend** — Server-sent events deliver generated code in real time using a typed, event-sourced stream contract shared between the renderer and the core.
 
 - ** Snapshots & Prompt History** — Every project keeps its prompt history and snapshots so you can review or roll back.
 
@@ -107,20 +78,22 @@ Star us, and you will receive all release notifications from GitHub without any 
 
 ##  Tech Stack
 
-### Backend
-- **FastAPI** — High-performance Python web framework
-- **LangChain + Google Gemini / OpenAI / Ollama** — Pluggable LLM orchestration (gemini-2.5-flash by default)
-- **SSE-Starlette** — Server-sent events for streaming code generation
-- **UV** — Modern Python package manager
-- **Pytest** — Storage and HTTP test suite
+### Core backend (`@micracode/core`)
+- **TypeScript** — runs **in-process inside the Electron main** (no spawned child)
+- **[pi coding agent SDK](https://pi.dev/docs/latest/sdk)** — LLM orchestration and tool use
+- **Hono** — the `/v1` HTTP + SSE app the renderer talks to
+- **Event-sourced** — an append-only log backs `/v1/events` and the live stream
 
-### Frontend
+### Desktop shell
+- **Electron 33** — packages the web UI + core into a native app
+- **electron-builder** + **electron-updater** — builds and auto-updates releases
+
+### Frontend (`apps/web`)
 - **Next.js 15** — React framework with App Router
 - **React 19** — Latest React with concurrent features
 - **Tailwind CSS** — Utility-first CSS framework
 - **Radix UI** + **shadcn/ui** — Accessible component primitives
 - **Monaco Editor** — VS Code's editor in the browser
-- **WebContainer API** — Run Node.js apps directly in the browser
 - **Zustand** — Lightweight state management
 - **ai-sdk** — Vercel AI SDK for chat streaming
 
@@ -132,72 +105,64 @@ Star us, and you will receive all release notifications from GitHub without any 
 
 ## Development Setup
 
-> For contributors and people building from source. If you just want to use Micracode, see [Quick Install](#-quick-install) above.
+> For contributors and people building from source. If you just want to use Micracode, download it from [Releases](https://github.com/Jamessdevops/micracode/releases).
 
 ### Prerequisites
 - **Node.js** v22.18.0 (pinned via `.nvmrc`)
 - **Bun** ≥ 1.1.0
-- **Python** ≥ 3.12 (managed automatically by `uv`)
-- **uv** ≥ 0.4
-- A **Google Gemini** or **OpenAI** API key, **or** a locally running [Ollama](https://ollama.com) instance (no API key needed)
+- An **OpenAI**, **Google Gemini**, or **Anthropic** API key
 
 ### Environment Setup
 
-Copy the example env file into the API app and add your key:
+Copy the example env file and add your key(s):
 ```bash
-cp .env.example apps/api/.env
-$EDITOR apps/api/.env
+cp .env.example .env
+$EDITOR .env
 ```
 
-Minimum config (Gemini, the default provider):
+Minimum config (any one provider key works):
 ```env
-LLM_PROVIDER=gemini
-GOOGLE_API_KEY=your_gemini_api_key
-```
-
-Or use OpenAI:
-```env
-LLM_PROVIDER=openai
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=gpt-4o
+# or GOOGLE_API_KEY / ANTHROPIC_API_KEY
 ```
 
-Or use a local [Ollama](https://ollama.com) model (no API key required):
-```env
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2
-```
-
-Ollama models are discovered dynamically from your local daemon — any model you have pulled (`ollama pull <model>`) will appear in the UI picker automatically.
-
-See [`docs/configuration.md`](./docs/configuration.md) for the full reference and supported model IDs.
+Projects are written to `~/opener-apps` by default; override with `OPENER_APPS_DIR`.
 
 ### Installation
 
 ```bash
 nvm use                # picks up .nvmrc -> Node 22.18.0
-bun install            # JS workspaces (web + shared)
-bun run api:install    # Python deps for the API (creates a uv-managed venv)
+bun install            # installs all workspaces (web, core, desktop, shared)
 ```
 
 ### Running the Application
 
-Start both apps in parallel:
+Run the **desktop app** in dev (web UI + core inside Electron):
 ```bash
-bun run dev
+bun run desktop
 ```
 
-- Web: <http://localhost:3000>
-- API: <http://127.0.0.1:8000>
+Or run the **web + core** stack in the browser (no Electron):
+```bash
+bun run dev            # Next.js on :3000, @micracode/core on :8000
+```
 
-Or run them individually:
+You can also run them individually:
 ```bash
 bun run dev:web        # Next.js only
-bun run dev:api        # FastAPI only (uvicorn --reload)
+bun run dev:core       # @micracode/core only (PORT=8000)
 ```
 
-Open <http://localhost:3000>, type a project description into the prompt box, and you're off. Full walkthrough in [Getting Started](./docs/getting-started.md).
+Open <http://localhost:3000> (or the desktop window), type a project description
+into the prompt box, and you're off.
+
+### Building a Release
+
+```bash
+bun run build          # build the Next.js frontend
+bun run desktop:release # package a signed macOS app via electron-builder
+```
 
 ---
 
@@ -206,25 +171,25 @@ Open <http://localhost:3000>, type a project description into the prompt box, an
 ```
 micracode/
 ├── apps/
-│   ├── web/                    # Next.js 15 frontend
+│   ├── web/                    # Next.js 15 frontend (renderer)
 │   │   ├── src/
 │   │   │   ├── app/            # App Router pages
 │   │   │   ├── components/     # React components (incl. shadcn/ui)
-│   │   │   ├── lib/            # Utilities and clients
+│   │   │   ├── lib/            # Utilities, API clients, generated types
 │   │   │   └── store/          # Zustand stores
 │   │   └── package.json
 │   │
-│   └── api/                    # FastAPI backend
-│       ├── src/micracode_api/
-│       │   ├── agents/         # LLM orchestrator, prompts, model catalog
-│       │   ├── routers/        # health, models, projects, generate
-│       │   ├── schemas/        # Pydantic request/response models
-│       │   ├── starter/        # Starter project templates
-│       │   ├── config.py       # Settings (env vars)
-│       │   ├── storage.py      # Local filesystem project storage
-│       │   └── main.py         # FastAPI app entry point
-│       ├── tests/
-│       └── pyproject.toml
+│   ├── core/                   # @micracode/core — TS backend (in-process)
+│   │   └── src/
+│   │       ├── server.ts       # Hono /v1 app
+│   │       ├── sessions.ts     # one pi agent run per session
+│   │       ├── eventlog.ts     # append-only event log
+│   │       ├── storage.ts      # local filesystem project storage
+│   │       └── index.ts        # startCoreServer() entry point
+│   │
+│   └── desktop/                # Electron shell
+│       ├── src/main.ts         # imports the core, serves the renderer
+│       └── electron-builder.config.js
 │
 ├── packages/
 │   └── shared/                 # Shared TypeScript types (stream event contract)
@@ -237,23 +202,27 @@ micracode/
 
 ## API Endpoints
 
-All endpoints are mounted under `/v1`.
+The core exposes a `/v1` HTTP + SSE contract that the renderer speaks.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET    | `/v1/health` | Service health check |
-| GET    | `/v1/models` | List available LLM models |
+| GET    | `/v1/models` | List available LLM models (per configured keys) |
+| GET/POST | `/v1/settings` | Read / update provider keys |
 | POST   | `/v1/generate` | Stream code generation events (SSE) |
-| GET    | `/v1/projects` | List all projects |
-| POST   | `/v1/projects` | Create a new project |
-| GET    | `/v1/projects/{id}` | Get a project by id |
-| DELETE | `/v1/projects/{id}` | Delete a project |
-| GET    | `/v1/projects/{id}/files` | List/read project files |
-| PUT    | `/v1/projects/{id}/files` | Write project files |
-| GET    | `/v1/projects/{id}/download` | Download project as archive |
-| GET    | `/v1/projects/{id}/prompts` | Get prompt history |
-| POST   | `/v1/projects/{id}/prompts/pop-assistant` | Pop last assistant message |
-| GET    | `/v1/projects/{id}/snapshots` | List project snapshots |
+| GET/POST | `/v1/projects` | List / create projects |
+| GET/DELETE | `/v1/projects/{id}` | Get / delete a project |
+| GET/PUT | `/v1/projects/{id}/files` | Read / write project files |
+| GET    | `/v1/projects/{id}/prompts` | Prompt history |
+| POST   | `/v1/sessions` | Start an agent session |
+| POST   | `/v1/sessions/{id}/turn` | Send a turn to a session |
+| POST   | `/v1/sessions/{id}/interrupt` `resume` | Control a running session |
+| DELETE | `/v1/sessions/{id}` | Stop a session |
+| GET    | `/v1/events` , `/v1/events/stream` | Event log (poll / SSE) |
+
+Some endpoints (VCS/checkpoints, threads, command bus, project download,
+snapshots) are stubbed and return `501` — see `apps/core/README.md` for the
+full status of the vertical slice.
 
 ---
 
@@ -261,10 +230,10 @@ All endpoints are mounted under `/v1`.
 
 End-user docs live in [`docs/`](./docs/README.md):
 
-- **[Getting Started](./docs/getting-started.md)** — install prerequisites, configure an API key, and run the app.
-- **[Configuration](./docs/configuration.md)** — environment variables, switching between OpenAI and Gemini, and supported model IDs.
+- **[Getting Started](./docs/getting-started.md)** — install, configure a key, and run the app.
+- **[Configuration](./docs/configuration.md)** — environment variables and supported model IDs.
 - **[Using the Workspace](./docs/usage.md)** — the home page, chat, editor, and preview panels.
-- **[Projects on Disk](./docs/projects-on-disk.md)** — where your generated apps live and how to work with them outside the app.
+- **[Projects on Disk](./docs/projects-on-disk.md)** — where your generated apps live.
 - **[Troubleshooting](./docs/troubleshooting.md)** — common errors and how to fix them.
 - **[FAQ](./docs/faq.md)** — short answers to common questions.
 
@@ -273,15 +242,15 @@ End-user docs live in [`docs/`](./docs/README.md):
 ## Useful Scripts
 
 ```bash
-bun run dev           # web + api in parallel
-bun run dev:web       # Next.js only
-bun run dev:api       # FastAPI only (uvicorn --reload, 127.0.0.1:8000)
-bun run typecheck     # TS across all workspaces
-bun run lint          # eslint across workspaces
-bun run format        # prettier
-bun run test:api      # pytest (storage + HTTP tests)
-bun run api:lint      # ruff check
-bun run api:format    # ruff format
+bun run desktop        # Electron app in dev (web + core in-process)
+bun run dev            # web + core in the browser (:3000 / :8000)
+bun run dev:web        # Next.js only
+bun run dev:core       # @micracode/core only
+bun run build          # build the Next.js frontend
+bun run desktop:release # package a macOS release
+bun run typecheck      # TS across all workspaces
+bun run lint           # eslint across workspaces
+bun run format         # prettier
 ```
 
 ---

@@ -45,9 +45,9 @@ a new turn; the response streams in token-by-token, with file writes
 showing up live in the editor's file tree as they happen.
 
 At the bottom of the chat input you'll see the **model picker**.
-Use it to switch between providers (OpenAI / Google Gemini) and models.
-Greyed-out entries mean the server doesn't have a key configured for
-that provider — see [Configuration](./configuration.md) to add one.
+Use it to switch between providers (OpenAI / Google Gemini / Anthropic)
+and models. Greyed-out entries mean no key is configured for that
+provider — see [Configuration](./configuration.md) to add one.
 
 The chat history for each project is persisted to disk (in
 `prompts.jsonl` inside the project folder) so it's still there when you
@@ -60,7 +60,7 @@ The center panel has two parts:
 - **File tree** on the left lists every file in the project.
   Click a file to open it.
 - **Monaco editor** on the right shows the file. You can edit it
-  directly — saving sends the change to the API, which writes it to
+  directly — saving sends the change to the core, which writes it to
   disk in the project folder. The model sees these edits on its next
   turn.
 

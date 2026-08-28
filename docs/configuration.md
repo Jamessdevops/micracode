@@ -1,115 +1,81 @@
 # Configuration
 
-All configuration lives in environment variables. The FastAPI backend
-reads `apps/api/.env` (and the repo-root `.env` if present); the Next.js
-app picks up `NEXT_PUBLIC_*` vars at build/dev time.
+Micracode is configured through environment variables and, in the
+packaged desktop app, the in-app **Settings** panel.
+
+- **Desktop app:** API keys entered in Settings are persisted to a shared
+  auth file at `~/.micracode/auth.json` and applied to the running core.
+- **From source:** the core backend (`@micracode/core`) reads a `.env` at
+  the repo root; the Next.js app picks up `NEXT_PUBLIC_*` vars at
+  build/dev time.
 
 A working template is committed at [`.env.example`](../.env.example) —
-copy it to `apps/api/.env` and edit.
+copy it to `.env` and edit.
 
 ## Variable reference
 
-### Shared
-
-| Variable          | Default                  | Purpose                                                                  |
-| ----------------- | ------------------------ | ------------------------------------------------------------------------ |
-| `APP_WEB_ORIGIN`  | `http://localhost:3000`  | The single origin the FastAPI service will accept CORS requests from.    |
-
 ### Web (`apps/web`)
 
-| Variable                   | Default                   | Purpose                                                  |
-| -------------------------- | ------------------------- | -------------------------------------------------------- |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8000`   | Where the browser calls the API. Must match what the API binds to. |
+| Variable                   | Default                 | Purpose                                                            |
+| -------------------------- | ----------------------- | ------------------------------------------------------------------ |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8000` | Where the browser calls the core. Must match the port the core binds to. |
 
-### API (`apps/api`)
+### Core backend (`@micracode/core`)
 
-| Variable           | Default              | Purpose                                                                                  |
-| ------------------ | -------------------- | ---------------------------------------------------------------------------------------- |
-| `LLM_PROVIDER`     | `gemini`             | Default provider. `gemini`, `openai`, or `ollama`.                                        |
-| `GOOGLE_API_KEY`   | —                    | Required when `LLM_PROVIDER=gemini` (or whenever a user picks a Gemini model in the UI).  |
-| `GEMINI_MODEL`     | `gemini-2.5-flash`   | Default Gemini model (used as fallback when the client doesn't send one).                 |
-| `OPENAI_API_KEY`   | —                    | Required when `LLM_PROVIDER=openai` (or whenever a user picks an OpenAI model).           |
-| `OPENAI_MODEL`     | —                    | Default OpenAI model. No default — must be one of the registered IDs (see below).         |
-| `OLLAMA_BASE_URL`  | `http://localhost:11434` | Base URL for the local Ollama daemon. Only used when `LLM_PROVIDER=ollama`.           |
-| `OLLAMA_MODEL`     | —                    | Default Ollama model (e.g. `llama3.2`). Required when `LLM_PROVIDER=ollama`.             |
-| `OPENER_APPS_DIR`  | `~/opener-apps`      | Optional override for where generated projects are stored. Useful for tests or sandboxes. |
-| `LOG_LEVEL`        | `INFO`               | Standard Python log level for the API process.                                            |
+| Variable             | Default            | Purpose                                                                        |
+| -------------------- | ------------------ | ------------------------------------------------------------------------------ |
+| `OPENAI_API_KEY`     | —                  | Enables OpenAI models. Set at least one provider key.                          |
+| `GOOGLE_API_KEY`     | —                  | Enables Google Gemini models.                                                  |
+| `ANTHROPIC_API_KEY`  | —                  | Enables Anthropic models (resolved by the pi coding agent SDK).                |
+| `PORT`               | `8000`             | Port the core binds in dev (`bun run dev:core`). Ignored in the desktop app, which picks a free port. |
+| `OPENER_APPS_DIR`    | `~/opener-apps`    | Override for where generated projects are stored. Absolute path.               |
+| `MICRACODE_CONFIG_DIR` | `~/.micracode`   | Directory holding `auth.json` (persisted API keys).                            |
 
-API keys never leave the server. The browser only learns *whether* a
+API keys never leave your machine. The browser only learns *whether* a
 provider is available (so the model picker can grey out unconfigured
-ones); it never sees the keys themselves.
+ones); it never sees the keys themselves. The pi coding agent SDK also
+resolves keys from your environment and from `~/.pi/agent/auth.json`.
 
 ## Choosing a provider and model
 
-You don't have to pick at install time. Each chat turn the UI sends the
-selected `(provider, model)` pair from the **model picker** in the chat
-composer. The selection is remembered in your browser's localStorage,
-per-browser (not per-project).
+The chat composer's **model picker** sends the selected `(provider,
+model)` pair with each turn; the selection is remembered in your
+browser's localStorage, per-browser (not per-project).
 
-The environment values (`LLM_PROVIDER`, `GEMINI_MODEL`, `OPENAI_MODEL`)
-are only used as the default when the client hasn't picked yet — for
-example, the very first turn after a fresh browser, or older clients
-that don't send a selection.
+`GET /v1/models` reports the available providers and a minimal built-in
+catalog (currently OpenAI and Gemini). Because agent sessions accept a
+free-form `model` string, the catalog is mostly a convenience for the
+picker rather than a hard allowlist.
 
-### Supported model IDs
-
-The model picker is driven by a registry on the server. As of this
-documentation, the accepted IDs are:
-
-**Google Gemini**
-
-- `gemini-2.5-flash`
-- `gemini-2.5-pro`
-- `gemini-2.5-flash-lite`
-
-**OpenAI**
-
-- `gpt-5.4`
-- `gpt-5-mini`
-- `gpt-4.1`
-
-**Ollama (local)**
-
-Ollama models are **not** a static list — they are fetched dynamically from your local Ollama daemon (`GET /api/tags`) each time `GET /v1/models` is called. Any model you have pulled with `ollama pull <model>` will appear in the UI picker automatically. If the daemon is not reachable or has no models installed, the Ollama section is omitted from the picker entirely.
-
-To see the live list (including which providers are currently
-"available" — meaning a key is configured), hit:
+To see the live list — including which providers are currently
+"available" (a key is configured) — hit:
 
 ```bash
 curl http://127.0.0.1:8000/v1/models
 ```
 
-To check what defaults the running server has resolved:
+And to check overall health:
 
 ```bash
 curl http://127.0.0.1:8000/v1/health
 ```
-
-### Adding a new model ID
-
-If you want a model that isn't in the registry, append it to
-[`apps/api/src/micracode_api/agents/model_catalog.py`](../apps/api/src/micracode_api/agents/model_catalog.py)
-and restart the API. The UI picks it up automatically from
-`GET /v1/models` on next load.
 
 ## Changing ports
 
 The defaults assume:
 
 - Web on `:3000`
-- API on `127.0.0.1:8000`
+- Core on `127.0.0.1:8000`
 
-If you need different ports, change them in **two** places so they
-match:
+To use different ports, change them in **two** places so they match:
 
-1. The startup commands. The web port is `bun --filter web dev -- -p
-   <port>`; the API port is set via the `--port` flag in
-   `dev:api` in `package.json`.
-2. The env vars: set `APP_WEB_ORIGIN` to the new web URL and
-   `NEXT_PUBLIC_API_BASE_URL` to the new API URL.
+1. The startup commands — the web port is `bun --filter web dev -- -p
+   <port>`; the core port is the `PORT` env var read by `dev:core`.
+2. The env var `NEXT_PUBLIC_API_BASE_URL` — point it at the new core URL.
 
-If they don't match, the browser will hit CORS errors when calling the
-API.
+CORS on the core defaults to allowing any origin in dev, so a mismatch
+shows up as failed requests to `/v1/...` rather than a browser CORS
+error — check that `NEXT_PUBLIC_API_BASE_URL` matches the core's port.
 
 ## Changing the storage location
 
@@ -120,6 +86,6 @@ elsewhere — for testing, on an external drive, or in a sandbox — set:
 OPENER_APPS_DIR=/absolute/path/to/your/folder
 ```
 
-The path must be absolute. The API will create the directory if it
-doesn't exist. See [Projects on Disk](./projects-on-disk.md) for what
-gets written.
+The path must be absolute. The core creates the directory if it doesn't
+exist. See [Projects on Disk](./projects-on-disk.md) for what gets
+written.

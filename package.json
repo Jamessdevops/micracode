@@ -15,9 +15,8 @@
   },
   "packageManager": "bun@1.3.11",
   "scripts": {
-    "dev": "bun run --parallel dev:web dev:api",
+    "dev": "bun run --parallel dev:web dev:core",
     "dev:web": "bun --filter web dev",
-    "dev:api": "uv run --directory apps/api uvicorn micracode_api.main:app --reload --host 127.0.0.1 --port 8000",
     "dev:core": "bun --filter @micracode/core dev",
     "desktop": "bun run --parallel dev:web desktop:app",
     "desktop:app": "bun --filter @micracode/desktop dev",
@@ -26,11 +25,7 @@
     "start:web": "bun --filter web start",
     "typecheck": "bun --filter '*' typecheck",
     "lint": "bun --filter '*' lint",
-    "format": "bun --filter '*' format",
-    "test:api": "uv run --directory apps/api pytest",
-    "api:install": "uv sync --directory apps/api",
-    "api:lint": "uv run --directory apps/api ruff check .",
-    "api:format": "uv run --directory apps/api ruff format ."
+    "format": "bun --filter '*' format"
   },
   "devDependencies": {
     "prettier": "^3.3.3",

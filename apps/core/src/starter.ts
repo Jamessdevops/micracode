@@ -4,8 +4,7 @@
  *
  * Ships Tailwind, CSS-variable design tokens, Inter via next/font/google,
  * lucide-react, framer-motion, and a cn() helper so the codegen model produces
- * polished sites from the first turn. Ported from the old Python backend
- * (packages/core/src/micracode_core/starter/next_default.py); keep in sync.
+ * polished sites from the first turn.
  *
  * The dev script binds 0.0.0.0 and honors the PORT env var (no hardcoded
  * --port) so the desktop can hand each project a free, unique port — a pinned

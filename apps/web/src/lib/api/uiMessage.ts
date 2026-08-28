@@ -3,8 +3,8 @@ import type { UIMessage } from "ai";
 import type { PromptRecord } from "./projects";
 
 /**
- * Custom data part payloads emitted by our FastAPI `/v1/generate`
- * endpoint over the Vercel AI SDK UI Message Stream Protocol.
+ * Custom data part payloads emitted by the `/v1/generate` endpoint
+ * over the Vercel AI SDK UI Message Stream Protocol.
  *
  * The keys become `data-<key>` part types on the wire; the values are
  * the shape of the `data` field.

@@ -1,11 +1,8 @@
 /**
- * Wire contract between the FastAPI backend and the Next.js frontend.
+ * Wire contract between the core backend and the Next.js frontend.
  *
  * The backend emits one `StreamEvent` per SSE `data:` frame as compact JSON.
  * A terminal `event: end` frame signals the end of the stream.
- *
- * Any change here MUST be mirrored in
- * `apps/api/src/micracode_api/schemas/stream.py`.
  */
 
 export type StreamStage = "planning" | "generating" | "done" | "cancelled" | "plan_ready";

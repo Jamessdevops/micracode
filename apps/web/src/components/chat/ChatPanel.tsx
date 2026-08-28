@@ -60,9 +60,9 @@ export function ChatPanel({
     () =>
       new DefaultChatTransport<MicracodeUIMessage>({
         api: `${env.API_BASE_URL}/v1/generate`,
-        // `useChat` sends the entire message history on every turn; our
-        // FastAPI endpoint only needs `project_id` + the current prompt
-        // (it rereads prior turns from disk), so we flatten here.
+        // `useChat` sends the entire message history on every turn; the
+        // `/v1/generate` endpoint only needs `project_id` + the current
+        // prompt (it rereads prior turns from disk), so we flatten here.
         prepareSendMessagesRequest: ({ messages }) => {
           const lastUser = [...messages]
             .reverse()

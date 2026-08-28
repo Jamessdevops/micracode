@@ -1,7 +1,7 @@
 # Projects on Disk
 
 Micracode doesn't use a database. Every project you create is just
-a folder on your machine, and the FastAPI service is the only process
+a folder on your machine, and the core backend is the only process
 that writes to it.
 
 ## Where they live
@@ -13,7 +13,7 @@ By default, projects live under:
 ```
 
 You can change this by setting `OPENER_APPS_DIR` to an absolute path
-before starting the API. See [Configuration](./configuration.md).
+before starting the app. See [Configuration](./configuration.md).
 
 ## What's inside a project
 
@@ -79,7 +79,7 @@ hidden state outside this directory.
 
 ## Security note
 
-The API binds only to `127.0.0.1` and path-checks every write to make
+The core binds only to `127.0.0.1` and path-checks every write to make
 sure it can't escape the project root. That's the boundary you're
 trusting: nothing on your LAN can reach the service, and even a buggy
 or adversarial model response can't write outside the project's folder

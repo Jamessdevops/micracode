@@ -3,7 +3,7 @@
  * (Vercel AI SDK UI Message Stream Protocol). It drives a pi coding-agent
  * session over the project workspace and translates pi's events into the exact
  * SSE frame contract the client was built against (see
- * apps/web/src/lib/api/uiMessage.ts and the old Python apps/api generate.py).
+ * apps/web/src/lib/api/uiMessage.ts).
  *
  * Mapping:
  *   message_update/text_delta     -> text-start / text-delta / text-end
