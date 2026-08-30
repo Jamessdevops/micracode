@@ -60,19 +60,8 @@ Star us, and you will receive all release notifications from GitHub without any 
 
 ## Features
 
-- ** Natural-Language Codegen** — Describe an app in plain English; Micracode streams a working project into the workspace file by file.
-
-- ** Iterative Chat** — Refine your project through conversation. Ask for changes, fixes, or new features and watch them stream in.
-
-- ** In-Browser Monaco Editor** — Edit generated code directly in a full Monaco editor; changes persist to disk.
-
-- ** Pluggable LLM Providers** — Bring your own key for OpenAI, Google Gemini, or Anthropic. The model picker adapts to whichever keys you've set.
-
-- ** Local-First Storage** — Projects live as plain folders on your filesystem. No database, no auth, no cloud service required.
-
-- ** Streaming Backend** — Server-sent events deliver generated code in real time using a typed, event-sourced stream contract shared between the renderer and the core.
-
-- ** Snapshots & Prompt History** — Every project keeps its prompt history and snapshots so you can review or roll back.
+| ![Image 1](https://github.com/user-attachments/assets/26e56738-fa6f-44e3-aefa-c8db4f97540a) | ![Image 2](https://github.com/user-attachments/assets/aa8ad40d-7bf9-45cb-a815-00d8efe8ffdf) |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 
 ---
 
