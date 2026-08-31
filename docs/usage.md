@@ -76,6 +76,26 @@ delivered in a later phase, so what you see today depends on which
 build you're on. The console area below the preview shows logs from
 the sandbox once it's running.
 
+### Temporary preview links
+
+Use **Temporary preview** in the workspace toolbar when someone else needs
+to see the current result. Before the first share, Micracode explains exactly
+what will happen:
+
+1. Micracode runs the project's production build.
+2. It verifies and uploads only the static files produced in `out/`.
+3. temp.md returns a public link that normally expires after seven days.
+
+Anyone with the URL can open the preview. This action is optional and does not
+require a temp.md account. The menu lets you copy or open the link, rebuild and
+update that same URL, or revoke it immediately. Micracode pauses a running local
+preview during the production build and restarts it afterward.
+
+Projects need a non-empty `scripts.build` command that produces a static
+`out/index.html`. New Next.js projects are configured for static export;
+projects that depend on server-only Next.js features need to be adapted before
+they can be shared this way.
+
 ## A typical session
 
 1. Start from the home page with a clear, specific prompt:

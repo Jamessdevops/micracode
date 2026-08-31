@@ -24,7 +24,7 @@
 
 <br />
 <div align="center">
-<em>Your local AI coding workspace — no database, no auth, no cloud.</em>
+<em>Your local AI coding workspace — no database, no auth, and cloud sharing only when you ask.</em>
 </div>
 <br />
 
@@ -62,6 +62,8 @@ Star us, and you will receive all release notifications from GitHub without any 
 
 | ![Image 1](https://github.com/user-attachments/assets/26e56738-fa6f-44e3-aefa-c8db4f97540a) | ![Image 2](https://github.com/user-attachments/assets/aa8ad40d-7bf9-45cb-a815-00d8efe8ffdf) |
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+
+- ** Temporary Preview Links** — Explicitly build and share a public static preview through [temp.md](https://temp.md), then update the same URL or revoke it from the workspace.
 
 ---
 
@@ -203,6 +205,7 @@ The core exposes a `/v1` HTTP + SSE contract that the renderer speaks.
 | GET/DELETE | `/v1/projects/{id}` | Get / delete a project |
 | GET/PUT | `/v1/projects/{id}/files` | Read / write project files |
 | GET    | `/v1/projects/{id}/prompts` | Prompt history |
+| GET/POST/DELETE | `/v1/projects/{id}/temp-preview` | Inspect, publish/update, or revoke a temp.md static preview |
 | POST   | `/v1/sessions` | Start an agent session |
 | POST   | `/v1/sessions/{id}/turn` | Send a turn to a session |
 | POST   | `/v1/sessions/{id}/interrupt` `resume` | Control a running session |
