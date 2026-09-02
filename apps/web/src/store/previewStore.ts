@@ -30,7 +30,7 @@ interface PreviewState {
 
 interface PreviewActions {
   startPreview: (projectId?: string) => Promise<void>;
-  stopPreview: (projectId?: string) => void;
+  stopPreview: (projectId?: string) => Promise<void>;
   enqueueShell: (command: string, cwd?: string) => void;
   clearOutput: () => void;
 }
@@ -164,9 +164,9 @@ export const usePreviewStore = create<PreviewState & PreviewActions>((set, get) 
     }
   },
 
-  stopPreview: (projectId) => {
+  stopPreview: async (projectId) => {
     if (isDesktop() && projectId) {
-      void window.electronAPI.stopDevServer(projectId);
+      await window.electronAPI.stopDevServer(projectId);
     }
     set({ phase: "idle", previewUrl: null, errorMessage: null, activeProjectId: null });
   },

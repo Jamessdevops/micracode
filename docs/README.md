@@ -19,8 +19,9 @@ the app. Start with [Getting Started](./getting-started.md).
 
 ## At a glance
 
-- **Local-first.** No database, no auth, no cloud. Everything lives
-  under `~/opener-apps/` on your machine.
+- **Local-first.** No database, auth, or cloud service is required.
+  Everything lives under `~/opener-apps/` unless you explicitly create
+  a public temporary preview.
 - **Bring your own key.** Works with OpenAI, Google Gemini, or Anthropic.
   Keys stay on your machine.
 - **Desktop app.** Micracode ships as an Electron app. The core backend

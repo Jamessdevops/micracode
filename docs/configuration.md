@@ -30,6 +30,7 @@ copy it to `.env` and edit.
 | `PORT`               | `8000`             | Port the core binds in dev (`bun run dev:core`). Ignored in the desktop app, which picks a free port. |
 | `OPENER_APPS_DIR`    | `~/opener-apps`    | Override for where generated projects are stored. Absolute path.               |
 | `MICRACODE_CONFIG_DIR` | `~/.micracode`   | Directory holding `auth.json` (persisted API keys).                            |
+| `TEMPMD_API_URL`       | `https://api.temp.md` | Override the temporary-preview API endpoint for development or testing. HTTPS is required. |
 
 API keys never leave your machine. The browser only learns *whether* a
 provider is available (so the model picker can grey out unconfigured

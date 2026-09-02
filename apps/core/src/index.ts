@@ -65,3 +65,10 @@ export { createApp } from "./server.js";
 export { EventLog } from "./eventlog.js";
 export { Storage } from "./storage.js";
 export { SessionManager } from "./sessions.js";
+export {
+  collectStaticOutput,
+  publicTempPreviewError,
+  runStaticBuild,
+  TempPreviewError,
+  TempPreviewService,
+} from "./temp-preview.js";

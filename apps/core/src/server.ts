@@ -18,12 +18,14 @@ import { EventLog } from "./eventlog.js";
 import { Generator } from "./generate.js";
 import { SessionManager, type StartSessionBody } from "./sessions.js";
 import { Storage } from "./storage.js";
+import { publicTempPreviewError, TempPreviewService } from "./temp-preview.js";
 
 export interface CoreDeps {
   storage: Storage;
   log: EventLog;
   sessions: SessionManager;
   webOrigin?: string;
+  tempPreviews?: TempPreviewService;
 }
 
 const NOT_IMPLEMENTED = (what: string) => ({ detail: `${what} not implemented yet` });
@@ -31,6 +33,7 @@ const NOT_IMPLEMENTED = (what: string) => ({ detail: `${what} not implemented ye
 export function createApp(deps: CoreDeps): Hono {
   const { storage, log, sessions } = deps;
   const generator = new Generator(storage);
+  const tempPreviews = deps.tempPreviews ?? new TempPreviewService(storage);
   const app = new Hono();
 
   app.use(
@@ -138,6 +141,35 @@ export function createApp(deps: CoreDeps): Hono {
     return c.json(storage.readPrompts(id));
   });
 
+  // Static, public previews are opt-in. The service builds and verifies only
+  // the project's `out/` directory; capability tokens never reach the client.
+  v1.get("/projects/:id/temp-preview", (c) => {
+    c.header("Cache-Control", "no-store");
+    try {
+      return c.json(tempPreviews.status(c.req.param("id")));
+    } catch (error) {
+      return tempPreviewErrorResponse(error);
+    }
+  });
+
+  v1.post("/projects/:id/temp-preview", async (c) => {
+    c.header("Cache-Control", "no-store");
+    try {
+      return c.json(await tempPreviews.publish(c.req.param("id")));
+    } catch (error) {
+      return tempPreviewErrorResponse(error);
+    }
+  });
+
+  v1.delete("/projects/:id/temp-preview", async (c) => {
+    c.header("Cache-Control", "no-store");
+    try {
+      return c.json(await tempPreviews.revoke(c.req.param("id")));
+    } catch (error) {
+      return tempPreviewErrorResponse(error);
+    }
+  });
+
   // Stubs — projects surface the web client also calls.
   v1.get("/projects/:id/snapshots", (c) => c.json([]));
   v1.get("/projects/:id/download", (c) => c.json(NOT_IMPLEMENTED("project download"), 501));
@@ -208,4 +240,12 @@ export function createApp(deps: CoreDeps): Hono {
 
   app.route("/v1", v1);
   return app;
+}
+
+function tempPreviewErrorResponse(error: unknown): Response {
+  const response = publicTempPreviewError(error);
+  return Response.json(response.body, {
+    status: response.status,
+    headers: { "Cache-Control": "no-store" },
+  });
 }

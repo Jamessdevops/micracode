@@ -21,7 +21,8 @@ export const NEXT_STARTER_FILES: Record<string, string> = {
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0"
+    "dev": "next dev --hostname 0.0.0.0",
+    "build": "next build"
   },
   "dependencies": {
     "clsx": "2.1.1",
@@ -72,7 +73,9 @@ export const NEXT_STARTER_FILES: Record<string, string> = {
 `,
   "next.config.mjs": `/** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "export",
   images: {
+    unoptimized: true,
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "placehold.co" },
@@ -80,6 +83,11 @@ const nextConfig = {
   },
 };
 export default nextConfig;
+`,
+  ".gitignore": `node_modules/
+.next/
+out/
+.micracode/tempmd-preview.json
 `,
   "postcss.config.mjs": `export default {
   plugins: {

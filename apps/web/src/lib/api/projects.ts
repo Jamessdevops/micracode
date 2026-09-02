@@ -49,6 +49,19 @@ export interface UpdateProjectFileBody {
   content: string;
 }
 
+export interface TempPreviewSummary {
+  hasPreview: boolean;
+  canonicalUrl?: string;
+  expiresAt?: string | null;
+  updatedAt?: string;
+}
+
+export interface PublishTempPreviewResult {
+  operation: "create" | "update";
+  uploadedFiles: number;
+  preview: TempPreviewSummary;
+}
+
 export interface ApiClientOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
@@ -78,10 +91,14 @@ export async function request<T>(
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new ApiError(
-      `${init.method ?? "GET"} ${path} failed: ${res.status} ${body}`,
-      res.status,
-    );
+    let detail = "";
+    try {
+      const parsed = JSON.parse(body) as { detail?: unknown };
+      detail = typeof parsed.detail === "string" ? parsed.detail : "";
+    } catch {
+      detail = body.trim();
+    }
+    throw new ApiError(detail || `${init.method ?? "GET"} ${path} failed`, res.status);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -171,6 +188,39 @@ export function getProjectPrompts(
   return request<PromptRecord[]>(
     `/v1/projects/${encodeURIComponent(id)}/prompts`,
     { method: "GET" },
+    opts,
+  );
+}
+
+export function getTempPreview(
+  id: string,
+  opts?: ApiClientOptions,
+): Promise<TempPreviewSummary> {
+  return request<TempPreviewSummary>(
+    `/v1/projects/${encodeURIComponent(id)}/temp-preview`,
+    { method: "GET" },
+    opts,
+  );
+}
+
+export function publishTempPreview(
+  id: string,
+  opts?: ApiClientOptions,
+): Promise<PublishTempPreviewResult> {
+  return request<PublishTempPreviewResult>(
+    `/v1/projects/${encodeURIComponent(id)}/temp-preview`,
+    { method: "POST" },
+    opts,
+  );
+}
+
+export function revokeTempPreview(
+  id: string,
+  opts?: ApiClientOptions,
+): Promise<{ ok: true; preview: TempPreviewSummary }> {
+  return request<{ ok: true; preview: TempPreviewSummary }>(
+    `/v1/projects/${encodeURIComponent(id)}/temp-preview`,
+    { method: "DELETE" },
     opts,
   );
 }

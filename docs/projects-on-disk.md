@@ -29,6 +29,7 @@ Each project is a complete, self-contained directory:
     .micracode/
       project.json       # metadata: id, name, template, timestamps
       prompts.jsonl      # append-only chat history (one JSON per line)
+      tempmd-preview.json # secret preview capability (only after sharing)
 ```
 
 The top of the folder is **just a normal project**. Source files,
@@ -45,15 +46,18 @@ thing. It holds:
 - **`prompts.jsonl`** — every chat turn for this project, appended
   one JSON object per line. This is what the chat panel replays when
   you reopen the project.
+- **`tempmd-preview.json`** — created only after you explicitly share a
+  temporary preview. It stores the secret capability needed to update or
+  revoke that URL and is written with owner-only permissions where supported.
 
 ## Working with projects outside Micracode
 
 Because the project folder is a normal repo, you can:
 
 - **Initialize git** inside it: `git init && git add . && git commit
-  -m "first cut"`. The `.micracode/` folder is fine to commit
-  alongside the source if you want to preserve the chat history, or
-  add it to `.gitignore` if you don't.
+  -m "first cut"`. You may commit the other `.micracode/` files if you
+  want to preserve metadata and chat history, but never commit or share
+  `.micracode/tempmd-preview.json`. New starters ignore it automatically.
 - **Open it in any editor** — VS Code, Cursor, JetBrains, vim. Changes
   you make on disk are picked up the next time the model reads the
   files.
@@ -76,6 +80,9 @@ Because the project folder is a normal repo, you can:
 Backing up is the same as backing up any folder — copy `~/opener-apps/`
 (or wherever you pointed `OPENER_APPS_DIR`) somewhere safe. There is no
 hidden state outside this directory.
+
+If a backup includes `.micracode/tempmd-preview.json`, protect it like a
+password: anyone who obtains that file can update or revoke the preview.
 
 ## Security note
 

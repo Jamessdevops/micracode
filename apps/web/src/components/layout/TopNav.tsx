@@ -8,6 +8,8 @@ import { isDesktop } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/store/uiStore";
 
+import { TempPreviewControl } from "./TempPreviewControl";
+
 export interface TopNavProps {
   projectId: string;
   projectName?: string;
@@ -50,6 +52,7 @@ export function TopNav({ projectId, projectName, onPublish }: TopNavProps) {
       </div>
 
       <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+        <TempPreviewControl projectId={projectId} />
         <a
           href={getProjectDownloadUrl(projectId)}
           download
