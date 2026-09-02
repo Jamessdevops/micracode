@@ -20,11 +20,12 @@ import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 
 import { composeAttachments, type RawAttachment } from "./attachments.js";
+import { providerById, PROVIDERS } from "./providers.js";
 import { Storage } from "./storage.js";
 
 // pi pulls in undici 8.9, whose webidl does `markAsUncloneable = require(
@@ -46,6 +47,9 @@ interface GenerateBody {
   // provider/model are accepted but ignored for now — pi resolves its own
   // default model/provider from env + ~/.pi/agent/auth.json. Wire an explicit
   // model here when the UI needs per-request override.
+  // provider is the app id from the model picker ("openai"|"anthropic"|"kimi"
+  // |"gemini"); model is a pi model id. When set, we inject that provider's key
+  // and switch the session to it (see applySelection).
   provider?: string;
   model?: string;
   // Per-turn context files (images -> vision, text/PDF -> appended text).
@@ -132,21 +136,26 @@ export class Generator {
   // assistant transcript is still persisted to prompts.jsonl and replayed into
   // the UI). Add a persistent SessionManager + per-project locking if follow-up
   // turns while a prior turn streams, or cross-restart memory, become needed.
-  private sessions = new Map<string, AgentSession>();
+  private sessions = new Map<string, { session: AgentSession; runtime: ModelRuntime }>();
 
   constructor(private readonly storage: Storage) {}
 
-  private async ensureSession(projectId: string): Promise<AgentSession> {
+  private async ensureSession(
+    projectId: string,
+  ): Promise<{ session: AgentSession; runtime: ModelRuntime }> {
     const existing = this.sessions.get(projectId);
     if (existing) return existing;
     const pi = await import("@earendil-works/pi-coding-agent");
     const modelRuntime = await pi.ModelRuntime.create();
     // pi loads credentials from its own store (~/.pi/agent/auth.json) and
-    // ignores process.env, so the key the user configures in Settings (written
-    // to ~/.micracode/auth.json and mirrored into env) never reaches it. Inject
-    // it at runtime so our configured key wins over whatever pi has on file.
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (openaiKey) await modelRuntime.setRuntimeApiKey("openai", openaiKey);
+    // ignores process.env, so the keys the user configures in Settings (written
+    // to ~/.micracode/auth.json and mirrored into env) never reach it. Inject
+    // every configured provider key at runtime so our keys win over whatever pi
+    // has on file; the per-turn model switch (applySelection) picks among them.
+    for (const p of PROVIDERS) {
+      const key = process.env[p.env];
+      if (key) await modelRuntime.setRuntimeApiKey(p.piProvider, key).catch(() => {});
+    }
     const workspace = this.storage.projectDir(projectId);
     // Steer pi via an appended system prompt so it just builds instead of
     // interviewing the user about stacks (see SYSTEM_GUIDANCE).
@@ -164,8 +173,30 @@ export class Generator {
       resourceLoader,
       sessionManager: pi.SessionManager.inMemory(workspace),
     });
-    this.sessions.set(projectId, session);
-    return session;
+    const entry = { session, runtime: modelRuntime };
+    this.sessions.set(projectId, entry);
+    return entry;
+  }
+
+  // Switch the session to the picker's chosen provider+model for this turn.
+  // Re-injects the key (it may have been added in Settings after the session
+  // was created) and throws a user-facing message if the key or model is
+  // missing, surfaced to the chat as an error frame. No selection -> pi keeps
+  // whatever model it resolved by default.
+  private async applySelection(
+    session: AgentSession,
+    runtime: ModelRuntime,
+    provider?: string,
+    model?: string,
+  ): Promise<void> {
+    const def = providerById(provider);
+    if (!def || !model) return;
+    const key = process.env[def.env];
+    if (!key) throw new Error(`No API key configured for ${def.label}. Add it in Settings.`);
+    await runtime.setRuntimeApiKey(def.piProvider, key);
+    const m = runtime.getModel(def.piProvider, model);
+    if (!m) throw new Error(`Model "${model}" is not available for ${def.label}.`);
+    await session.setModel(m);
   }
 
   handle = async (c: Context): Promise<Response> => {
@@ -278,10 +309,11 @@ export class Generator {
         }
       };
 
-      const session = await this.ensureSession(projectId).catch((err) => {
+      const created = await this.ensureSession(projectId).catch((err) => {
         q.push({ type: "error", errorText: `session start failed: ${err}` });
         return null;
       });
+      const session = created?.session;
 
       const unsub = session?.subscribe(onEvent);
 
@@ -292,12 +324,18 @@ export class Generator {
       // Drive the turn in the background; closing the queue ends the drain loop.
       const run = (async () => {
         try {
-          if (session) {
-            await session.prompt(
+          if (created) {
+            await this.applySelection(
+              created.session,
+              created.runtime,
+              body.provider,
+              body.model,
+            );
+            await created.session.prompt(
               turnPrompt,
               images.length ? { images } : undefined,
             );
-            await session.waitForIdle();
+            await created.session.waitForIdle();
           }
         } catch (err) {
           q.push({ type: "error", errorText: String(err) });

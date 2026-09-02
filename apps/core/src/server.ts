@@ -16,6 +16,7 @@ import { streamSSE } from "hono/streaming";
 import { writeAuth } from "./auth.js";
 import { EventLog } from "./eventlog.js";
 import { Generator } from "./generate.js";
+import { PROVIDERS, providerById, providerConfigured } from "./providers.js";
 import { SessionManager, type StartSessionBody } from "./sessions.js";
 import { Storage } from "./storage.js";
 import { publicTempPreviewError, TempPreviewService } from "./temp-preview.js";
@@ -53,44 +54,44 @@ export function createApp(deps: CoreDeps): Hono {
   );
 
   // --- models ---------------------------------------------------------------
-  // minimal catalog inherited from the old contract; the sessions
-  // model takes a free-form `model` string, so this is mostly legacy.
-  v1.get("/models", (c) =>
-    c.json({
-      providers: [
-        {
-          id: "openai",
-          label: "OpenAI",
-          available: Boolean(process.env.OPENAI_API_KEY),
-          models: [{ id: "gpt-5", label: "GPT-5" }],
-        },
-        {
-          id: "gemini",
-          label: "Gemini",
-          available: Boolean(process.env.GOOGLE_API_KEY),
-          models: [{ id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" }],
-        },
-      ],
-      default: { provider: "openai", model: "gpt-5" },
-    }),
-  );
+  // Catalog the picker shows, built from the shared provider registry. Each
+  // provider is flagged available when its API key is configured; the default
+  // is the first configured provider (so a Claude-only user lands on Claude).
+  v1.get("/models", (c) => {
+    const providers = PROVIDERS.map((p) => ({
+      id: p.id,
+      label: p.label,
+      available: providerConfigured(p),
+      models: p.models,
+    }));
+    const preferred = providers.find((p) => p.available) ?? providers[0];
+    return c.json({
+      providers,
+      default: { provider: preferred.id, model: preferred.models[0].id },
+    });
+  });
 
   // --- settings -------------------------------------------------------------
-  // Read/persist user API keys in the shared dedicated auth file. OpenAI only
-  // for now, matching the web client's SettingsView shape.
+  // Read/persist user API keys in the shared dedicated auth file, one entry per
+  // provider in the registry.
   const mask = (k: string) => (k ? (k.length > 4 ? `…${k.slice(-4)}` : "…") : null);
-  const settingsView = () => {
-    const key = process.env.OPENAI_API_KEY ?? "";
-    return { openai: { configured: Boolean(key), hint: mask(key) } };
-  };
+  const settingsView = () =>
+    Object.fromEntries(
+      PROVIDERS.map((p) => {
+        const key = process.env[p.env] ?? "";
+        return [p.id, { configured: Boolean(key), hint: mask(key) }];
+      }),
+    );
 
   v1.get("/settings", (c) => c.json(settingsView()));
 
   v1.post("/settings", async (c) => {
-    const body = await c.req.json<{ openai_api_key?: string }>();
-    const key = (body?.openai_api_key ?? "").trim();
-    writeAuth("OPENAI_API_KEY", key); // persist to the shared file
-    process.env.OPENAI_API_KEY = key; // live effect for the running core
+    const body = await c.req.json<{ provider?: string; key?: string }>();
+    const def = providerById(body?.provider);
+    if (!def) return c.json({ detail: "unknown provider" }, 400);
+    const key = (body?.key ?? "").trim();
+    writeAuth(def.env, key); // persist to the shared file
+    process.env[def.env] = key; // live effect for the running core
     return c.json(settingsView());
   });
 

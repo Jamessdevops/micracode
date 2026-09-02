@@ -1,15 +1,17 @@
 "use client";
 
 import { KeyRound, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { getSettings, updateOpenAiKey } from "@/lib/api/settings";
+import { anyConfigured, getSettings, updateProviderKey } from "@/lib/api/settings";
 
 const SKIP_KEY = "micracode:welcome-skipped";
 
 /**
- * First-run setup modal. Shows on the home page when no OpenAI key is
- * configured and the user hasn't skipped before. Skip is remembered in
+ * First-run setup modal. Shows on the home page when no provider key is
+ * configured and the user hasn't skipped before. Offers an OpenAI quick-start;
+ * Claude, Kimi and Gemini are configurable in Settings. Skip is remembered in
  * localStorage; adding a key elsewhere also stops it appearing.
  */
 export function WelcomeModal() {
@@ -21,7 +23,7 @@ export function WelcomeModal() {
   useEffect(() => {
     if (localStorage.getItem(SKIP_KEY)) return;
     getSettings()
-      .then((s) => setOpen(!s.openai.configured))
+      .then((s) => setOpen(!anyConfigured(s)))
       .catch(() => {
         /* backend unreachable — don't block the app with the modal */
       });
@@ -38,7 +40,7 @@ export function WelcomeModal() {
     setSaving(true);
     setError(null);
     try {
-      await updateOpenAiKey(key.trim());
+      await updateProviderKey("openai", key.trim());
       setOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -72,6 +74,14 @@ export function WelcomeModal() {
           className="mt-1.5 w-full rounded-md border border-[#2a2a30] bg-[#0e0e11] px-3 py-2 text-sm outline-none placeholder:text-zinc-600 focus:border-[#45f4ff]"
         />
         {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+
+        <p className="mt-3 text-xs text-zinc-500">
+          Prefer Claude, Kimi, or Gemini? Add those keys in{" "}
+          <Link href="/settings" className="text-[#45f4ff] hover:underline">
+            Settings
+          </Link>
+          .
+        </p>
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button

@@ -9,7 +9,7 @@
 
 import { env } from "@/lib/env";
 
-export type ProviderId = "openai" | "gemini";
+export type ProviderId = string;
 
 export interface ModelOption {
   id: string;
