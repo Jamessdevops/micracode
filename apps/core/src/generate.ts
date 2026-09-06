@@ -20,12 +20,16 @@ import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import type { AgentSession, ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentSession,
+  ModelRuntime,
+} from "@earendil-works/pi-coding-agent";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 
 import { composeAttachments, type RawAttachment } from "./attachments.js";
 import { Checkpoints } from "./checkpoints.js";
+import { runCliAgent } from "./cliHarness.js";
 import { providerById, PROVIDERS } from "./providers.js";
 import { Storage } from "./storage.js";
 
@@ -66,7 +70,8 @@ const TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 // Python core's patcher._ensure_use_client. See packages/core patcher.py.
 const CLIENT_HOOK_RE =
   /\b(?:useState|useEffect|useLayoutEffect|useReducer|useRef|useContext|useCallback|useMemo|useTransition|useDeferredValue|useSyncExternalStore|useImperativeHandle)\s*\(/;
-const CLIENT_IMPORT_RE = /from\s+['"](?:framer-motion|@?react-spring(?:\/[\w-]+)?)['"]/;
+const CLIENT_IMPORT_RE =
+  /from\s+['"](?:framer-motion|@?react-spring(?:\/[\w-]+)?)['"]/;
 const USE_CLIENT_RE = /^\s*['"]use client['"]\s*;?/;
 const SERVER_ONLY_FILES = new Set(["app/layout.tsx", "app/layout.jsx"]);
 
@@ -74,7 +79,8 @@ function ensureUseClient(rel: string, content: string): string | null {
   if (!/\.[jt]sx?$/.test(rel) || rel.endsWith(".d.ts")) return null;
   if (SERVER_ONLY_FILES.has(rel)) return null;
   if (USE_CLIENT_RE.test(content)) return null;
-  if (!CLIENT_IMPORT_RE.test(content) && !CLIENT_HOOK_RE.test(content)) return null;
+  if (!CLIENT_IMPORT_RE.test(content) && !CLIENT_HOOK_RE.test(content))
+    return null;
   return '"use client";\n\n' + content.replace(/^\n+/, "");
 }
 
@@ -122,7 +128,8 @@ class FrameQueue {
 
 /** Best-effort extraction of a readable string from a pi tool result. */
 function resultText(result: unknown): string {
-  const r = result as { content?: Array<{ type?: string; text?: string }> } | undefined;
+  const r = result as
+    { content?: Array<{ type?: string; text?: string }> } | undefined;
   if (Array.isArray(r?.content)) {
     return r.content
       .map((p) => (p?.type === "text" ? (p.text ?? "") : ""))
@@ -137,7 +144,12 @@ export class Generator {
   // assistant transcript is still persisted to prompts.jsonl and replayed into
   // the UI). Add a persistent SessionManager + per-project locking if follow-up
   // turns while a prior turn streams, or cross-restart memory, become needed.
-  private sessions = new Map<string, { session: AgentSession; runtime: ModelRuntime }>();
+  private sessions = new Map<
+    string,
+    { session: AgentSession; runtime: ModelRuntime }
+  >();
+  // Per-project CLI session id, so cli-backed turns `--resume` and keep context.
+  private cliSessions = new Map<string, string>();
   private readonly checkpoints: Checkpoints;
 
   constructor(private readonly storage: Storage) {
@@ -158,7 +170,8 @@ export class Generator {
     // has on file; the per-turn model switch (applySelection) picks among them.
     for (const p of PROVIDERS) {
       const key = process.env[p.env];
-      if (key) await modelRuntime.setRuntimeApiKey(p.piProvider, key).catch(() => {});
+      if (key)
+        await modelRuntime.setRuntimeApiKey(p.piProvider, key).catch(() => {});
     }
     const workspace = this.storage.projectDir(projectId);
     // Steer pi via an appended system prompt so it just builds instead of
@@ -196,15 +209,21 @@ export class Generator {
     const def = providerById(provider);
     if (!def || !model) return;
     const key = process.env[def.env];
-    if (!key) throw new Error(`No API key configured for ${def.label}. Add it in Settings.`);
+    if (!key)
+      throw new Error(
+        `No API key configured for ${def.label}. Add it in Settings.`,
+      );
     await runtime.setRuntimeApiKey(def.piProvider, key);
     const m = runtime.getModel(def.piProvider, model);
-    if (!m) throw new Error(`Model "${model}" is not available for ${def.label}.`);
+    if (!m)
+      throw new Error(`Model "${model}" is not available for ${def.label}.`);
     await session.setModel(m);
   }
 
   handle = async (c: Context): Promise<Response> => {
-    const body = await c.req.json<GenerateBody>().catch(() => ({}) as GenerateBody);
+    const body = await c.req
+      .json<GenerateBody>()
+      .catch(() => ({}) as GenerateBody);
     const projectId = body.project_id ?? "";
     const prompt = body.prompt ?? "";
 
@@ -275,14 +294,26 @@ export class Generator {
             calls.set(e.toolCallId, { toolName, args });
             if (toolName === "write" || toolName === "edit") break; // -> file-write on end
             if (toolName === "bash") {
+              // ponytail: with a CLI backend the agent already ran this bash on
+              // the host workspace, so forwarding it to the preview runtime can
+              // double-execute. Rare in the build flow (mostly file writes);
+              // gate per-backend or sandbox if it ever bites.
               q.push({
                 type: "data-shell-exec",
-                data: { command: args.command ?? args.cmd ?? "", cwd: args.cwd ?? null },
+                data: {
+                  command: args.command ?? args.cmd ?? "",
+                  cwd: args.cwd ?? null,
+                },
               });
             }
             q.push({
               type: "data-tool-call",
-              data: { tool_call_id: e.toolCallId, tool_name: toolName, args, reason: "" },
+              data: {
+                tool_call_id: e.toolCallId,
+                tool_name: toolName,
+                args,
+                reason: "",
+              },
             });
             break;
           }
@@ -303,7 +334,11 @@ export class Generator {
                   fs.writeFileSync(abs, fixed, "utf8");
                   content = fixed;
                 }
-                q.push({ type: "data-file-write", id: rel, data: { path: rel, content } });
+                q.push({
+                  type: "data-file-write",
+                  id: rel,
+                  data: { path: rel, content },
+                });
               } catch {
                 // File vanished between write and read — skip the frame.
               }
@@ -323,22 +358,48 @@ export class Generator {
         }
       };
 
-      const created = await this.ensureSession(projectId).catch((err) => {
-        q.push({ type: "error", errorText: `session start failed: ${err}` });
-        return null;
-      });
-      const session = created?.session;
+      // CLI backends (Claude Code / Codex) spawn a local binary instead of the
+      // in-process pi session; they feed the SAME onEvent via pi-shaped events.
+      const providerDef = providerById(body.provider);
+      const isCli = providerDef?.kind === "cli";
 
-      const unsub = session?.subscribe(onEvent);
+      const created = isCli
+        ? null
+        : await this.ensureSession(projectId).catch((err) => {
+            q.push({
+              type: "error",
+              errorText: `session start failed: ${err}`,
+            });
+            return null;
+          });
+      const unsub = created?.session.subscribe(onEvent);
 
       q.push({ type: "start", messageId });
       q.push({ type: "start-step" });
-      q.push({ type: "data-status", data: { stage: "generating" }, transient: true });
+      q.push({
+        type: "data-status",
+        data: { stage: "generating" },
+        transient: true,
+      });
 
       // Drive the turn in the background; closing the queue ends the drain loop.
       const run = (async () => {
         try {
-          if (created) {
+          if (isCli && providerDef?.bin) {
+            // ponytail: images not forwarded to the CLI yet — text attachments
+            // are already folded into turnPrompt; add image temp-files + prompt
+            // refs when a CLI vision path is needed.
+            for await (const ev of runCliAgent({
+              bin: providerDef.bin as "claude" | "codex",
+              workspace: this.storage.projectDir(projectId),
+              prompt: turnPrompt,
+              model: body.model,
+              resumeId: this.cliSessions.get(projectId),
+              onMeta: (sid) => this.cliSessions.set(projectId, sid),
+            })) {
+              onEvent(ev);
+            }
+          } else if (created) {
             await this.applySelection(
               created.session,
               created.runtime,
@@ -357,7 +418,10 @@ export class Generator {
           if (ctx.textStarted) q.push({ type: "text-end", id: textId });
           q.push({
             type: "data-status",
-            data: { stage: "done", ...(snapshotId ? { snapshot_id: snapshotId } : {}) },
+            data: {
+              stage: "done",
+              ...(snapshotId ? { snapshot_id: snapshotId } : {}),
+            },
             transient: true,
           });
           q.push({ type: "finish-step" });
@@ -375,7 +439,8 @@ export class Generator {
       await run;
 
       const reply = ctx.buffer.join("").trim();
-      if (reply) this.storage.appendPrompt(projectId, "assistant", reply, snapshotId);
+      if (reply)
+        this.storage.appendPrompt(projectId, "assistant", reply, snapshotId);
     });
   };
 }

@@ -17,7 +17,7 @@ import { writeAuth } from "./auth.js";
 import { Checkpoints } from "./checkpoints.js";
 import { EventLog } from "./eventlog.js";
 import { Generator } from "./generate.js";
-import { PROVIDERS, providerById, providerConfigured } from "./providers.js";
+import { PROVIDERS, providerAvailable, providerById } from "./providers.js";
 import { SessionManager, type StartSessionBody } from "./sessions.js";
 import { Storage } from "./storage.js";
 import { publicTempPreviewError, TempPreviewService } from "./temp-preview.js";
@@ -30,7 +30,9 @@ export interface CoreDeps {
   tempPreviews?: TempPreviewService;
 }
 
-const NOT_IMPLEMENTED = (what: string) => ({ detail: `${what} not implemented yet` });
+const NOT_IMPLEMENTED = (what: string) => ({
+  detail: `${what} not implemented yet`,
+});
 
 export function createApp(deps: CoreDeps): Hono {
   const { storage, log, sessions } = deps;
@@ -52,7 +54,12 @@ export function createApp(deps: CoreDeps): Hono {
 
   // --- health ---------------------------------------------------------------
   v1.get("/health", (c) =>
-    c.json({ status: "ok", environment: "desktop", provider: "pi", model: "pi-default" }),
+    c.json({
+      status: "ok",
+      environment: "desktop",
+      provider: "pi",
+      model: "pi-default",
+    }),
   );
 
   // --- models ---------------------------------------------------------------
@@ -63,7 +70,7 @@ export function createApp(deps: CoreDeps): Hono {
     const providers = PROVIDERS.map((p) => ({
       id: p.id,
       label: p.label,
-      available: providerConfigured(p),
+      available: providerAvailable(p),
       models: p.models,
     }));
     const preferred = providers.find((p) => p.available) ?? providers[0];
@@ -76,10 +83,12 @@ export function createApp(deps: CoreDeps): Hono {
   // --- settings -------------------------------------------------------------
   // Read/persist user API keys in the shared dedicated auth file, one entry per
   // provider in the registry.
-  const mask = (k: string) => (k ? (k.length > 4 ? `…${k.slice(-4)}` : "…") : null);
+  const mask = (k: string) =>
+    k ? (k.length > 4 ? `…${k.slice(-4)}` : "…") : null;
   const settingsView = () =>
     Object.fromEntries(
-      PROVIDERS.map((p) => {
+      // cli backends have no key to store (they use their own login).
+      PROVIDERS.filter((p) => p.kind === "pi").map((p) => {
         const key = process.env[p.env] ?? "";
         return [p.id, { configured: Boolean(key), hint: mask(key) }];
       }),
@@ -121,13 +130,15 @@ export function createApp(deps: CoreDeps): Hono {
 
   v1.get("/projects/:id/files", (c) => {
     const id = c.req.param("id");
-    if (!storage.getProject(id)) return c.json({ detail: "project not found" }, 404);
+    if (!storage.getProject(id))
+      return c.json({ detail: "project not found" }, 404);
     return c.json({ tree: storage.readTree(id) });
   });
 
   v1.put("/projects/:id/files", async (c) => {
     const id = c.req.param("id");
-    if (!storage.getProject(id)) return c.json({ detail: "project not found" }, 404);
+    if (!storage.getProject(id))
+      return c.json({ detail: "project not found" }, 404);
     const body = await c.req.json<{ path: string; content: string }>();
     if (!body?.path) return c.json({ detail: "path is empty" }, 400);
     try {
@@ -140,7 +151,8 @@ export function createApp(deps: CoreDeps): Hono {
 
   v1.get("/projects/:id/prompts", (c) => {
     const id = c.req.param("id");
-    if (!storage.getProject(id)) return c.json({ detail: "project not found" }, 404);
+    if (!storage.getProject(id))
+      return c.json({ detail: "project not found" }, 404);
     return c.json(storage.readPrompts(id));
   });
 
@@ -174,7 +186,8 @@ export function createApp(deps: CoreDeps): Hono {
   });
 
   // --- checkpoints (per-turn git snapshots) ---------------------------------
-  const requireProject = (c: any): boolean => Boolean(storage.getProject(c.req.param("id")));
+  const requireProject = (c: any): boolean =>
+    Boolean(storage.getProject(c.req.param("id")));
 
   // Chat "revert" surface: pre-turn snapshots keyed by commit sha.
   v1.get("/projects/:id/snapshots", (c) => {
@@ -211,7 +224,9 @@ export function createApp(deps: CoreDeps): Hono {
 
   v1.post("/projects/:id/checkpoints", async (c) => {
     if (!requireProject(c)) return c.json({ detail: "project not found" }, 404);
-    const body = await c.req.json<{ label?: string }>().catch(() => ({}) as { label?: string });
+    const body = await c.req
+      .json<{ label?: string }>()
+      .catch(() => ({}) as { label?: string });
     const id = c.req.param("id");
     const sha = checkpoints.capture(id, body?.label ?? "manual");
     const ch = checkpoints.list(id).find((x) => x.id === sha) ?? null;
@@ -221,7 +236,9 @@ export function createApp(deps: CoreDeps): Hono {
   v1.get("/projects/:id/checkpoints/:sid/diff", (c) => {
     if (!requireProject(c)) return c.json({ detail: "project not found" }, 404);
     try {
-      return c.json({ diff: checkpoints.diff(c.req.param("id"), c.req.param("sid")) });
+      return c.json({
+        diff: checkpoints.diff(c.req.param("id"), c.req.param("sid")),
+      });
     } catch (err) {
       return c.json({ detail: String(err) }, 400);
     }
@@ -237,7 +254,9 @@ export function createApp(deps: CoreDeps): Hono {
     }
   });
 
-  v1.get("/projects/:id/download", (c) => c.json(NOT_IMPLEMENTED("project download"), 501));
+  v1.get("/projects/:id/download", (c) =>
+    c.json(NOT_IMPLEMENTED("project download"), 501),
+  );
 
   // --- generate -------------------------------------------------------------
   // The code-generation stream the web chat panels POST to (AI SDK UI Message
@@ -256,7 +275,9 @@ export function createApp(deps: CoreDeps): Hono {
 
   v1.post("/sessions/:id/turn", async (c) => {
     const body = await c.req.json<{ text: string }>();
-    return c.json({ accepted: sessions.turn(c.req.param("id"), body?.text ?? "") });
+    return c.json({
+      accepted: sessions.turn(c.req.param("id"), body?.text ?? ""),
+    });
   });
 
   v1.post("/sessions/:id/interrupt", (c) =>
@@ -268,7 +289,9 @@ export function createApp(deps: CoreDeps): Hono {
     return info ? c.json(info) : c.json({ detail: "session not found" }, 404);
   });
 
-  v1.delete("/sessions/:id", (c) => c.json({ stopped: sessions.stop(c.req.param("id")) }));
+  v1.delete("/sessions/:id", (c) =>
+    c.json({ stopped: sessions.stop(c.req.param("id")) }),
+  );
 
   // --- events ---------------------------------------------------------------
   v1.get("/events", (c) => {
@@ -298,7 +321,9 @@ export function createApp(deps: CoreDeps): Hono {
 
   // --- threads (stub) -------------------------------------------------------
   v1.get("/threads", (c) => c.json([]));
-  v1.get("/threads/:id", (c) => c.json(NOT_IMPLEMENTED("thread projection"), 501));
+  v1.get("/threads/:id", (c) =>
+    c.json(NOT_IMPLEMENTED("thread projection"), 501),
+  );
   v1.post("/commands", (c) => c.json(NOT_IMPLEMENTED("command bus"), 501));
 
   app.route("/v1", v1);

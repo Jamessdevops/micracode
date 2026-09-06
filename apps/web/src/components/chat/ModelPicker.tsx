@@ -77,7 +77,21 @@ export function ModelPicker({ className }: { className?: string }) {
             {catalog.providers.map((p) => (
               <div key={p.id} className="py-1">
                 <div className="flex items-center justify-between px-3 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
-                  <span>{p.label}</span>
+                  <span className="flex items-center gap-1.5">
+                    {/* CLI backends spawn a local binary (claude/codex); flag
+                        them with a badge and drop the redundant "(CLI)". */}
+                    {p.id.endsWith("-cli")
+                      ? p.label.replace(/\s*\(CLI\)\s*$/i, "")
+                      : p.label}
+                    {p.id.endsWith("-cli") ? (
+                      <span
+                        className="rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-semibold tracking-wide text-emerald-400"
+                        title="Runs your locally-installed CLI (its own login), not an API key."
+                      >
+                        CLI
+                      </span>
+                    ) : null}
+                  </span>
                   {!p.available ? (
                     <span
                       className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400"
