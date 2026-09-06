@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import type { SourceLoc } from "@/lib/resolveSource";
+
 /**
  * A preview element the user picked to send to chat. `block` is the preformatted
  * "Selected element:" context prepended to the codegen prompt (backend-side, so
@@ -19,6 +21,12 @@ interface SelectionState {
   selectMode: boolean;
   setSelectMode: (v: boolean) => void;
   toggleSelectMode: () => void;
+  /** A source location the workspace should open in Monaco (Cmd/Ctrl-click on a
+   * preview element). Set by `PreviewPanel`, consumed + cleared by the
+   * workspace once it reveals the line. */
+  jump: SourceLoc | null;
+  requestJump: (loc: SourceLoc) => void;
+  clearJump: () => void;
 }
 
 export const useSelectionStore = create<SelectionState>((set) => ({
@@ -28,4 +36,7 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   selectMode: false,
   setSelectMode: (selectMode) => set({ selectMode }),
   toggleSelectMode: () => set((s) => ({ selectMode: !s.selectMode })),
+  jump: null,
+  requestJump: (jump) => set({ jump }),
+  clearJump: () => set({ jump: null }),
 }));

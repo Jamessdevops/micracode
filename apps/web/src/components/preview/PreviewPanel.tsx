@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PanelShell } from "@/components/layout/PanelShell";
 import { PreviewConsole } from "@/components/preview/PreviewConsole";
 import { cn } from "@/lib/utils";
+import { resolveSource } from "@/lib/resolveSource";
 import { useFileSystemStore } from "@/store/fileSystemStore";
 import { useSelectionStore } from "@/store/selectionStore";
 import {
@@ -19,7 +20,8 @@ type DomHint = { tag: string; classes: string[]; text: string };
 type BridgeMsg =
   | { type: "mc:hover"; rect: Rect; label: string }
   | {
-      type: "mc:select";
+      // "mc:select" = send to chat; "mc:open" = jump the editor to the source.
+      type: "mc:select" | "mc:open";
       rect: Rect;
       label: string;
       source?: SourceLoc;
@@ -193,6 +195,7 @@ export function PreviewPanel({
   const setSelectMode = useSelectionStore((s) => s.setSelectMode);
   const [hover, setHover] = useState<{ rect: Rect } | null>(null);
   const setPendingSelection = useSelectionStore((s) => s.setPending);
+  const requestJump = useSelectionStore((s) => s.requestJump);
 
   // Arm/disarm the in-iframe bridge whenever the toggle changes.
   const sendMode = useCallback((enabled: boolean) => {
@@ -215,22 +218,34 @@ export function PreviewPanel({
       if (msg.type === "mc:hover") setHover({ rect: msg.rect });
       else if (msg.type === "mc:leave" || msg.type === "mc:clear")
         setHover(null);
-      else if (msg.type === "mc:select") {
-        // Clicking an element sends it straight to chat as a draft. Grab the
-        // enclosing component's current source from the client-side file store
-        // (its keys match the stamped data-mc-loc paths) so the agent edits the
-        // real code, not a guess anchored on tag/text.
-        const file = msg.source
-          ? useFileSystemStore.getState().getFile(msg.source.path)
+      else if (msg.type === "mc:select" || msg.type === "mc:open") {
+        // Resolve the element's source `file:line` by matching its rendered
+        // class string / text against the project files the store already holds
+        // (no build-time stamping — see resolveSource).
+        const flat = useFileSystemStore.getState().getFlatFiles();
+        const source = msg.source ?? resolveSource(msg.dom, flat);
+        // Cmd/Ctrl-click: jump the editor to the source instead of chatting.
+        // Falls through to the chat draft when the source can't be resolved so
+        // the gesture is never wasted.
+        if (msg.type === "mc:open" && source) {
+          requestJump(source);
+          setHover(null);
+          setSelectMode(false);
+          return;
+        }
+        // Plain click sends the element to chat as a draft. Grab the enclosing
+        // component's current source so the agent edits the real code.
+        const file = source
+          ? flat.find((f) => f.path === source.path)?.content
           : undefined;
         const code =
-          file && msg.source ? grabComponent(file, msg.source.line) : undefined;
+          file && source ? grabComponent(file, source.line) : undefined;
         setPendingSelection({
-          block: selectionBlock(msg.source, msg.component, msg.dom, code),
+          block: selectionBlock(source, msg.component, msg.dom, code),
           label:
             (msg.component ? `${msg.component} — ` : "") +
-            (msg.source
-              ? `${basename(msg.source.path)}:${msg.source.line}`
+            (source
+              ? `${basename(source.path)}:${source.line}`
               : msg.label),
         });
         setHover(null);
@@ -239,7 +254,7 @@ export function PreviewPanel({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [setPendingSelection, setSelectMode]);
+  }, [setPendingSelection, setSelectMode, requestJump]);
 
   // Escape exits select mode when host (rather than iframe) holds focus.
   useEffect(() => {

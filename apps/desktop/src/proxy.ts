@@ -91,8 +91,10 @@ const BRIDGE_JS = `(() => {
     if (!(el instanceof Element)) return;
     selectedEl = el;
     const info = inspect(el);
+    // Cmd/Ctrl-click = "go to source" (jump the editor to this element);
+    // a plain click sends it to chat. Same payload, different intent.
     post({
-      type: "mc:select",
+      type: (e.metaKey || e.ctrlKey) ? "mc:open" : "mc:select",
       rect: rect(el),
       label: label(el),
       source: info.source,

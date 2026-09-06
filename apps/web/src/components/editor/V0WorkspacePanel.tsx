@@ -24,8 +24,18 @@ import {
   flattenFileSystemTree,
   useFileSystemStore,
 } from "@/store/fileSystemStore";
+import { useSelectionStore } from "@/store/selectionStore";
 
 import type { MonacoEditorPaneProps } from "./MonacoEditorPane";
+
+type CodeEditor = import("monaco-editor").editor.IStandaloneCodeEditor;
+
+/** Center a 1-based line in the editor and park the caret there. */
+function revealLine(editor: CodeEditor, line: number) {
+  editor.revealLineInCenter(line);
+  editor.setPosition({ lineNumber: line, column: 1 });
+  editor.focus();
+}
 
 const MonacoEditorPane = dynamic(
   () => import("./MonacoEditorPane").then((m) => m.MonacoEditorPane),
@@ -58,9 +68,10 @@ export function V0WorkspacePanel({
   const writtenAt = useFileSystemStore((s) => s.writtenAt);
   const files = useMemo(() => flattenFileSystemTree(tree), [tree]);
 
-  const editorRef = useRef<
-    import("monaco-editor").editor.IStandaloneCodeEditor | null
-  >(null);
+  const editorRef = useRef<CodeEditor | null>(null);
+  // Line to reveal once the editor (re)mounts on the target file. Applied in
+  // handleMountEditor because switching files remounts Monaco (key={filePath}).
+  const pendingRevealRef = useRef<number | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<{ path: string; content: string } | null>(
     null,
@@ -136,12 +147,35 @@ export function V0WorkspacePanel({
     [flushSave, selected, tab],
   );
 
-  const handleMountEditor = useCallback(
-    (editor: import("monaco-editor").editor.IStandaloneCodeEditor) => {
-      editorRef.current = editor;
-    },
-    [],
-  );
+  const handleMountEditor = useCallback((editor: CodeEditor) => {
+    editorRef.current = editor;
+    const line = pendingRevealRef.current;
+    if (line != null) {
+      pendingRevealRef.current = null;
+      // rAF so Monaco has laid out before we scroll it.
+      requestAnimationFrame(() => revealLine(editor, line));
+    }
+  }, []);
+
+  // Cmd/Ctrl-click in the preview asks to open an element's source here.
+  const jump = useSelectionStore((s) => s.jump);
+  const clearJump = useSelectionStore((s) => s.clearJump);
+  useEffect(() => {
+    if (!jump) return;
+    // A remount fires handleMountEditor (which applies the reveal) whenever the
+    // code tab was hidden or a different file is showing. Only when the target
+    // file is already open on the code tab is there no remount — reveal now.
+    const willRemount = tab !== "code" || selected !== jump.path;
+    void flushSave(selected);
+    setSelected(jump.path);
+    setTab("code");
+    if (willRemount) {
+      pendingRevealRef.current = jump.line;
+    } else if (editorRef.current) {
+      revealLine(editorRef.current, jump.line);
+    }
+    clearJump();
+  }, [jump, tab, selected, flushSave, clearJump]);
 
   const active = files.find((f) => f.path === selected) ?? null;
 

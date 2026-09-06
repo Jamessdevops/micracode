@@ -99,8 +99,8 @@ export function EditorTopBar({
               aria-pressed={selectMode}
               title={
                 selectMode
-                  ? "Exit select mode"
-                  : "Select an element (or Alt-click)"
+                  ? "Click an element to send it to chat · ⌘/Ctrl-click to open its code · Esc to exit"
+                  : "Select an element (or Alt-click) · ⌘/Ctrl-click to open its code"
               }
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition",
