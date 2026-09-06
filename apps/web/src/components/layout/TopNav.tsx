@@ -8,6 +8,7 @@ import { isDesktop } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/store/uiStore";
 
+import { CheckpointHistory } from "./CheckpointHistory";
 import { TempPreviewControl } from "./TempPreviewControl";
 
 export interface TopNavProps {
@@ -52,6 +53,7 @@ export function TopNav({ projectId, projectName, onPublish }: TopNavProps) {
       </div>
 
       <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+        <CheckpointHistory projectId={projectId} />
         <TempPreviewControl projectId={projectId} />
         <a
           href={getProjectDownloadUrl(projectId)}

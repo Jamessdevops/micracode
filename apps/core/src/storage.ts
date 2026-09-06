@@ -151,12 +151,18 @@ export class Storage {
     }
   }
 
-  appendPrompt(id: string, role: PromptRole, content: string): PromptRecord {
+  appendPrompt(
+    id: string,
+    role: PromptRole,
+    content: string,
+    snapshotId?: string | null,
+  ): PromptRecord {
     const rec: PromptRecord = {
       id: `p_${Date.now().toString(36)}`,
       role,
       content,
       created_at: new Date().toISOString(),
+      ...(snapshotId ? { snapshot_id: snapshotId } : {}),
     };
     fs.mkdirSync(path.dirname(this.promptsPath(id)), { recursive: true });
     fs.appendFileSync(this.promptsPath(id), JSON.stringify(rec) + "\n", "utf8");

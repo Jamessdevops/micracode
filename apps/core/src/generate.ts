@@ -25,6 +25,7 @@ import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 
 import { composeAttachments, type RawAttachment } from "./attachments.js";
+import { Checkpoints } from "./checkpoints.js";
 import { providerById, PROVIDERS } from "./providers.js";
 import { Storage } from "./storage.js";
 
@@ -137,8 +138,11 @@ export class Generator {
   // the UI). Add a persistent SessionManager + per-project locking if follow-up
   // turns while a prior turn streams, or cross-restart memory, become needed.
   private sessions = new Map<string, { session: AgentSession; runtime: ModelRuntime }>();
+  private readonly checkpoints: Checkpoints;
 
-  constructor(private readonly storage: Storage) {}
+  constructor(private readonly storage: Storage) {
+    this.checkpoints = new Checkpoints(storage);
+  }
 
   private async ensureSession(
     projectId: string,
@@ -208,6 +212,16 @@ export class Generator {
       return c.json({ detail: "project not found" }, 404);
     }
     if (!body.retry) this.storage.appendPrompt(projectId, "user", prompt);
+
+    // Checkpoint the tree as it stands *before* this turn edits anything, so
+    // the assistant reply can offer "revert to before this message". One commit
+    // per turn; null when the tree is unchanged since the last checkpoint.
+    let snapshotId: string | null = null;
+    try {
+      snapshotId = this.checkpoints.capture(projectId, prompt || "checkpoint");
+    } catch {
+      // git missing/broken must never block generation — just no checkpoint.
+    }
 
     // Fold attachments into the turn: text/PDF appended to the prompt, images
     // sent through pi's vision channel. Persisted history keeps the plain
@@ -341,7 +355,11 @@ export class Generator {
           q.push({ type: "error", errorText: String(err) });
         } finally {
           if (ctx.textStarted) q.push({ type: "text-end", id: textId });
-          q.push({ type: "data-status", data: { stage: "done" }, transient: true });
+          q.push({
+            type: "data-status",
+            data: { stage: "done", ...(snapshotId ? { snapshot_id: snapshotId } : {}) },
+            transient: true,
+          });
           q.push({ type: "finish-step" });
           q.push({ type: "finish" });
           q.close();
@@ -357,7 +375,7 @@ export class Generator {
       await run;
 
       const reply = ctx.buffer.join("").trim();
-      if (reply) this.storage.appendPrompt(projectId, "assistant", reply);
+      if (reply) this.storage.appendPrompt(projectId, "assistant", reply, snapshotId);
     });
   };
 }

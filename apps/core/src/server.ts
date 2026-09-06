@@ -14,6 +14,7 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 
 import { writeAuth } from "./auth.js";
+import { Checkpoints } from "./checkpoints.js";
 import { EventLog } from "./eventlog.js";
 import { Generator } from "./generate.js";
 import { PROVIDERS, providerById, providerConfigured } from "./providers.js";
@@ -34,6 +35,7 @@ const NOT_IMPLEMENTED = (what: string) => ({ detail: `${what} not implemented ye
 export function createApp(deps: CoreDeps): Hono {
   const { storage, log, sessions } = deps;
   const generator = new Generator(storage);
+  const checkpoints = new Checkpoints(storage);
   const tempPreviews = deps.tempPreviews ?? new TempPreviewService(storage);
   const app = new Hono();
 
@@ -171,11 +173,71 @@ export function createApp(deps: CoreDeps): Hono {
     }
   });
 
-  // Stubs — projects surface the web client also calls.
-  v1.get("/projects/:id/snapshots", (c) => c.json([]));
+  // --- checkpoints (per-turn git snapshots) ---------------------------------
+  const requireProject = (c: any): boolean => Boolean(storage.getProject(c.req.param("id")));
+
+  // Chat "revert" surface: pre-turn snapshots keyed by commit sha.
+  v1.get("/projects/:id/snapshots", (c) => {
+    if (!requireProject(c)) return c.json({ detail: "project not found" }, 404);
+    const snaps = checkpoints.list(c.req.param("id")).map((ch) => ({
+      id: ch.id,
+      created_at: new Date(ch.created_at * 1000).toISOString(),
+      user_prompt: ch.label,
+      kind: "pre-turn" as const,
+    }));
+    return c.json(snaps);
+  });
+
+  v1.post("/projects/:id/snapshots/:sid/restore", (c) => {
+    if (!requireProject(c)) return c.json({ detail: "project not found" }, 404);
+    try {
+      checkpoints.restore(c.req.param("id"), c.req.param("sid"));
+      return c.body(null, 204);
+    } catch (err) {
+      return c.json({ detail: String(err) }, 400);
+    }
+  });
+
+  // VCS/checkpoint surface (apps/web/src/lib/api/vcs.ts).
+  v1.get("/projects/:id/vcs/status", (c) => {
+    if (!requireProject(c)) return c.json({ detail: "project not found" }, 404);
+    return c.json(checkpoints.status(c.req.param("id")));
+  });
+
+  v1.get("/projects/:id/checkpoints", (c) => {
+    if (!requireProject(c)) return c.json({ detail: "project not found" }, 404);
+    return c.json(checkpoints.list(c.req.param("id")));
+  });
+
+  v1.post("/projects/:id/checkpoints", async (c) => {
+    if (!requireProject(c)) return c.json({ detail: "project not found" }, 404);
+    const body = await c.req.json<{ label?: string }>().catch(() => ({}) as { label?: string });
+    const id = c.req.param("id");
+    const sha = checkpoints.capture(id, body?.label ?? "manual");
+    const ch = checkpoints.list(id).find((x) => x.id === sha) ?? null;
+    return ch ? c.json(ch) : c.json({ detail: "no checkpoint" }, 409);
+  });
+
+  v1.get("/projects/:id/checkpoints/:sid/diff", (c) => {
+    if (!requireProject(c)) return c.json({ detail: "project not found" }, 404);
+    try {
+      return c.json({ diff: checkpoints.diff(c.req.param("id"), c.req.param("sid")) });
+    } catch (err) {
+      return c.json({ detail: String(err) }, 400);
+    }
+  });
+
+  v1.post("/projects/:id/checkpoints/:sid/revert", (c) => {
+    if (!requireProject(c)) return c.json({ detail: "project not found" }, 404);
+    try {
+      checkpoints.restore(c.req.param("id"), c.req.param("sid"));
+      return c.body(null, 204);
+    } catch (err) {
+      return c.json({ detail: String(err) }, 400);
+    }
+  });
+
   v1.get("/projects/:id/download", (c) => c.json(NOT_IMPLEMENTED("project download"), 501));
-  v1.get("/projects/:id/vcs/status", (c) => c.json(NOT_IMPLEMENTED("vcs"), 501));
-  v1.get("/projects/:id/checkpoints", (c) => c.json(NOT_IMPLEMENTED("checkpoints"), 501));
 
   // --- generate -------------------------------------------------------------
   // The code-generation stream the web chat panels POST to (AI SDK UI Message

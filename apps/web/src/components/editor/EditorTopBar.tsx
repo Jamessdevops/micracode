@@ -57,7 +57,7 @@ export function EditorTopBar({
   const selectMode = useSelectionStore((s) => s.selectMode);
   const toggleSelectMode = useSelectionStore((s) => s.toggleSelectMode);
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-zinc-800 bg-[#0E0E11] p-[25px]">
+    <div className="flex h-10 shrink-0 items-center gap-2 border rounded-[5px] border-zinc-800 bg-[#0E0E11] p-[25px]">
       <div className="flex items-center rounded-lg border border-zinc-800 bg-zinc-900 p-0.5">
         <SegmentButton
           active={activeTab === "preview"}

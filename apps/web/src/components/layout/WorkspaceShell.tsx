@@ -128,7 +128,7 @@ export function WorkspaceShell({
             collapsedSize={0}
             onCollapse={() => setIsPanelOpen(false)}
             onExpand={() => setIsPanelOpen(true)}
-            className="border border-[oklch(30.1%_0_0)] rounded-[25px] bg-[#0E0E11]"
+            className="border border-[oklch(30.1%_0_0)] rounded-[10px] m-2 bg-[#0E0E11]"
           >
             <V0WorkspacePanel
               projectId={projectId}
