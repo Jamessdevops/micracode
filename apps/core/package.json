@@ -21,6 +21,7 @@
     "test": "bun test test"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "1.6.0",
     "@earendil-works/pi-coding-agent": "*",
     "@hono/node-server": "^1.13.0",
     "@tempmd/client": "^0.1.1",
