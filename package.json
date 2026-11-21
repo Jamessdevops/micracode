@@ -20,7 +20,7 @@
     "dev:core": "bun --filter @micracode/core dev",
     "desktop": "bun run --parallel dev:web desktop:app",
     "desktop:app": "bun --filter @micracode/desktop dev",
-    "desktop:release": "bun --filter web build && bun --filter @micracode/desktop release:publish",
+    "desktop:release": "bun --filter @micracode/desktop release:publish",
     "build": "bun --filter web build",
     "start:web": "bun --filter web start",
     "typecheck": "bun --filter '*' typecheck",

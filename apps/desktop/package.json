@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "bun --filter @micracode/core build && tsc && electron dist/main.js --no-sandbox",
     "dev:watch": "bun --filter @micracode/core build && tsc && (tsc -w & electronmon dist/main.js --no-sandbox)",
-    "build": "bun --filter @micracode/core build && tsc && electron-builder --config electron-builder.config.js",
-    "release": "bun --filter @micracode/core build && tsc && electron-builder --mac --config electron-builder.config.js",
-    "release:publish": "bun --filter @micracode/core build && tsc && electron-builder --mac --publish always --config electron-builder.config.js",
+    "build": "bun --filter web build && bun --filter @micracode/core build && tsc && electron-builder --config electron-builder.config.js",
+    "release": "bun --filter web build && bun --filter @micracode/core build && tsc && electron-builder --mac --config electron-builder.config.js",
+    "release:publish": "bun --filter web build && bun --filter @micracode/core build && tsc && electron-builder --mac --publish always --config electron-builder.config.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
