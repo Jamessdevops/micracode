@@ -7,26 +7,16 @@ import { type ApiClientOptions, request } from "./projects";
 
 export type Harness = "codex" | "claude";
 
-export type PermissionMode =
-  | "bypassPermissions"
-  | "acceptEdits"
-  | "plan"
-  | "default";
-
 export interface StartSessionBody {
-  /** Bind to an existing project's workspace. */
-  project_id?: string;
-  /** Or an explicit path (ignored when `project_id` is set). */
-  workspace?: string;
+  /** The project whose folder the agent works in (required). */
+  project_id: string;
   model?: string;
   harness?: Harness;
-  permission?: PermissionMode;
 }
 
 export interface StartSessionResponse {
   session_id: string;
   harness: Harness;
-  permission: PermissionMode;
 }
 
 export function startSession(

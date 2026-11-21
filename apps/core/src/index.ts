@@ -4,6 +4,8 @@
  * listening on a localhost port the renderer talks to over HTTP/SSE.
  */
 
+import { randomBytes } from "node:crypto";
+
 import { serve } from "@hono/node-server";
 
 import { readAuth } from "./auth.js";
@@ -22,11 +24,14 @@ export interface StartOptions {
   apiKeys?: Record<string, string>;
   /** Allowed CORS origin(s), comma-separated. Defaults to `*`. */
   webOrigin?: string;
+  /** Secret every /v1 request must send as `Authorization: Bearer <token>`. Random when omitted. */
+  token?: string;
 }
 
 export interface CoreServer {
   port: number;
   url: string;
+  token: string;
   close: () => Promise<void>;
 }
 
@@ -40,7 +45,8 @@ export function startCoreServer(opts: StartOptions = {}): Promise<CoreServer> {
   storage.ensureRoot();
   const log = new EventLog();
   const sessions = new SessionManager(log, storage);
-  const app = createApp({ storage, log, sessions, webOrigin: opts.webOrigin });
+  const token = opts.token || randomBytes(32).toString("hex");
+  const app = createApp({ storage, log, sessions, webOrigin: opts.webOrigin, token });
 
   const host = opts.host ?? "127.0.0.1";
   return new Promise((resolve) => {
@@ -50,6 +56,7 @@ export function startCoreServer(opts: StartOptions = {}): Promise<CoreServer> {
         resolve({
           port: info.port,
           url: `http://${host}:${info.port}`,
+          token,
           close: () =>
             new Promise<void>((res, rej) =>
               server.close((err) => (err ? rej(err) : res())),

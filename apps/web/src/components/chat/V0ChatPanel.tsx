@@ -29,7 +29,7 @@ import {
 import { V0ChatInput } from "@/components/chat/V0ChatInput";
 import type { ChatAttachment } from "@/lib/attachments";
 import { filesToAttachments } from "@/lib/attachments";
-import { env } from "@/lib/env";
+import { authHeaders, env } from "@/lib/env";
 import {
   answerQuestion,
   getProjectFiles,
@@ -388,6 +388,7 @@ export function V0ChatPanel({
     () =>
       new DefaultChatTransport<MicracodeUIMessage>({
         api: `${env.API_BASE_URL}/v1/generate`,
+        headers: authHeaders(),
         prepareSendMessagesRequest: ({ messages }) => {
           const lastUser = [...messages]
             .reverse()

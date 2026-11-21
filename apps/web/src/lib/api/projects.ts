@@ -8,7 +8,7 @@
 
 import type { FileSystemTree } from "@micracode/shared";
 
-import { env } from "@/lib/env";
+import { authHeaders, env } from "@/lib/env";
 
 export type PromptRole = "user" | "assistant" | "system" | "tool";
 
@@ -86,6 +86,7 @@ export async function request<T>(
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
+      ...authHeaders(),
       ...(init.headers ?? {}),
     },
   });

@@ -7,7 +7,7 @@
  * consumes this to disable unavailable providers.
  */
 
-import { env } from "@/lib/env";
+import { authHeaders, env } from "@/lib/env";
 
 export type ProviderId = string;
 
@@ -32,7 +32,7 @@ export async function getModelCatalog(init?: RequestInit): Promise<ModelCatalog>
   const res = await fetch(`${env.API_BASE_URL}/v1/models`, {
     ...init,
     cache: "no-store",
-    headers: { Accept: "application/json", ...(init?.headers ?? {}) },
+    headers: { Accept: "application/json", ...authHeaders(), ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     throw new Error(`GET /v1/models failed: ${res.status}`);

@@ -10,6 +10,13 @@ contextBridge.exposeInMainWorld(
   portArg ? `http://127.0.0.1:${portArg.split("=")[1]}` : ""
 );
 
+// Secret the core requires on every /v1 call (see apps/core/src/server.ts).
+const tokenArg = process.argv.find((a) => a.startsWith("--backend-token="));
+contextBridge.exposeInMainWorld(
+  "__MICRACODE_API_TOKEN__",
+  tokenArg ? tokenArg.slice("--backend-token=".length) : ""
+);
+
 // Dev-only signal: the app runs an unpackaged build. Gates renderer dev tools
 // (react-grab) that can't rely on NODE_ENV, since the loaded web bundle is a
 // production static export.

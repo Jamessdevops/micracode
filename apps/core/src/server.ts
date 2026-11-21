@@ -9,6 +9,8 @@
  * Stubs return 501 so the missing pieces are loud, not silently wrong.
  */
 
+import { timingSafeEqual } from "node:crypto";
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
@@ -28,6 +30,8 @@ export interface CoreDeps {
   sessions: SessionManager;
   webOrigin?: string;
   tempPreviews?: TempPreviewService;
+  /** Shared secret required on every /v1 request. Unset = no check (tests only). */
+  token?: string;
 }
 
 const NOT_IMPLEMENTED = (what: string) => ({
@@ -51,6 +55,25 @@ export function createApp(deps: CoreDeps): Hono {
   );
 
   const v1 = new Hono();
+
+  // Every /v1 call must carry the per-launch secret. CORS alone can't protect
+  // a localhost API: any web page can still fire "simple" cross-origin
+  // requests at it (Hono parses a text/plain body as JSON just fine). The
+  // query form exists only for EventSource, which can't set headers.
+  if (deps.token) {
+    const expected = Buffer.from(deps.token);
+    v1.use("*", async (c, next) => {
+      const header = c.req.header("Authorization") ?? "";
+      const given = Buffer.from(
+        header.startsWith("Bearer ")
+          ? header.slice(7)
+          : (c.req.query("token") ?? ""),
+      );
+      if (given.length !== expected.length || !timingSafeEqual(given, expected))
+        return c.json({ detail: "unauthorized" }, 401);
+      await next();
+    });
+  }
 
   // --- health ---------------------------------------------------------------
   v1.get("/health", (c) =>

@@ -17,27 +17,27 @@ import { EventLog } from "./eventlog.js";
 import { Storage } from "./storage.js";
 
 export type Harness = "codex" | "claude";
-export type PermissionMode = "bypassPermissions" | "acceptEdits" | "plan" | "default";
 
+// Sessions bind only to a known project folder — never an arbitrary path —
+// so a request can't point the agent's bash tool at the rest of the disk.
+// ponytail: no permission modes; the agent runs its tools without an approval
+// round-trip. Add a mode (and a tool.permission_request event the UI answers)
+// only once it is actually enforced, so the API never promises safety it lacks.
 export interface StartSessionBody {
   project_id?: string;
-  workspace?: string;
   model?: string;
   harness?: Harness;
-  permission?: PermissionMode;
 }
 
 export interface StartSessionResponse {
   session_id: string;
   harness: Harness;
-  permission: PermissionMode;
 }
 
 interface LiveSession {
   id: string;
   workspace: string;
   harness: Harness;
-  permission: PermissionMode;
   pi: AgentSession;
 }
 
@@ -51,24 +51,12 @@ export class SessionManager {
     private readonly storage: Storage,
   ) {}
 
-  private resolveWorkspace(body: StartSessionBody): string {
-    if (body.project_id) {
-      const rec = this.storage.getProject(body.project_id);
-      if (!rec) throw new Error(`project not found: ${body.project_id}`);
-      return this.storage.projectDir(body.project_id);
-    }
-    if (body.workspace) return body.workspace;
-    throw new Error("project_id or workspace is required");
-  }
-
   async start(body: StartSessionBody): Promise<StartSessionResponse> {
-    const workspace = this.resolveWorkspace(body);
+    if (!body.project_id) throw new Error("project_id is required");
+    if (!this.storage.getProject(body.project_id))
+      throw new Error(`project not found: ${body.project_id}`);
+    const workspace = this.storage.projectDir(body.project_id);
     const harness: Harness = body.harness ?? "claude";
-    // permission modes aren't enforced yet — the agent runs its tools
-    // without an approval round-trip. Wire pi's interactive-approval hook (or a
-    // custom bash tool that emits a `tool.permission_request` event and waits)
-    // when the UI needs a confirm step.
-    const permission: PermissionMode = body.permission ?? "bypassPermissions";
     const id = `sess_${Math.random().toString(36).slice(2, 12)}`;
 
     // `body.model` is currently ignored — pi resolves its own default
@@ -86,9 +74,9 @@ export class SessionManager {
 
     session.subscribe((event) => this.mapPiEvent(id, event));
 
-    this.sessions.set(id, { id, workspace, harness, permission, pi: session });
+    this.sessions.set(id, { id, workspace, harness, pi: session });
     this.log.append("session.started", { session_id: id, workspace, harness });
-    return { session_id: id, harness, permission };
+    return { session_id: id, harness };
   }
 
   turn(id: string, text: string): boolean {
@@ -125,7 +113,7 @@ export class SessionManager {
 
   info(id: string): StartSessionResponse | null {
     const s = this.sessions.get(id);
-    return s ? { session_id: s.id, harness: s.harness, permission: s.permission } : null;
+    return s ? { session_id: s.id, harness: s.harness } : null;
   }
 
   private projectIdFor(workspace: string): string | null {

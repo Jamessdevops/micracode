@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PanelShell } from "@/components/layout/PanelShell";
 import { Button } from "@/components/ui/button";
-import { env } from "@/lib/env";
+import { authHeaders, env } from "@/lib/env";
 import {
   getProjectFiles,
   popLastAssistantPrompt,
@@ -60,6 +60,7 @@ export function ChatPanel({
     () =>
       new DefaultChatTransport<MicracodeUIMessage>({
         api: `${env.API_BASE_URL}/v1/generate`,
+        headers: authHeaders(),
         // `useChat` sends the entire message history on every turn; the
         // `/v1/generate` endpoint only needs `project_id` + the current
         // prompt (it rereads prior turns from disk), so we flatten here.

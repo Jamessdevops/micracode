@@ -47,7 +47,9 @@ export function streamEvents(
   opts?: { baseUrl?: string; onError?: (err: Event) => void },
 ): () => void {
   const base = opts?.baseUrl ?? env.API_BASE_URL;
-  const source = new EventSource(`${base}/v1/events/stream?cursor=${cursor}`);
+  const source = new EventSource(
+    `${base}/v1/events/stream?cursor=${cursor}&token=${encodeURIComponent(env.API_TOKEN)}`,
+  );
   source.onmessage = (msg) => {
     try {
       onEvent(JSON.parse(msg.data) as StoredEvent);

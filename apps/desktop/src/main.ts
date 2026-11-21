@@ -8,6 +8,7 @@ import {
   shell,
 } from "electron";
 import { spawn, execSync, ChildProcess } from "child_process";
+import { randomBytes } from "crypto";
 import { createServer as createNetServer } from "net";
 import * as path from "path";
 import * as fs from "fs";
@@ -53,6 +54,9 @@ function writeStore(data: Partial<StoreData>): void {
 // process — not as a spawned child.
 let coreServer: CoreServer | null = null;
 let backendPort = DEFAULT_STORE.backendPort;
+// Per-launch secret the core requires on every /v1 call, so other local pages
+// and processes can't drive the agent. Stable across backend restarts.
+const backendToken = randomBytes(32).toString("hex");
 let mainWindow: BrowserWindow | null = null;
 
 // Per-project dev server processes: projectId → ChildProcess
@@ -100,6 +104,7 @@ async function startBackend(): Promise<void> {
   coreServer = await startCoreServer({
     host: "127.0.0.1",
     port: 0, // pick a free port; read the real one back below
+    token: backendToken,
   });
   backendPort = coreServer.port;
   writeStore({ backendPort });
@@ -156,7 +161,8 @@ async function startDevServer(
 
   // Fetch the project root path from the backend
   const resp = await fetch(
-    `http://127.0.0.1:${backendPort}/v1/projects/${projectId}`
+    `http://127.0.0.1:${backendPort}/v1/projects/${encodeURIComponent(projectId)}`,
+    { headers: { Authorization: `Bearer ${backendToken}` } }
   );
   if (!resp.ok) throw new Error(`Project not found: ${projectId}`);
   const project = (await resp.json()) as { root_path: string };
@@ -298,6 +304,7 @@ function createWindow(): void {
       preload: path.join(__dirname, "preload.js"),
       additionalArguments: [
         `--backend-port=${backendPort}`,
+        `--backend-token=${backendToken}`,
         ...(app.isPackaged ? [] : ["--micracode-dev=1"]),
       ],
       contextIsolation: true,
